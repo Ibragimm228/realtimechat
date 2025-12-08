@@ -10,6 +10,21 @@ export const middleware = async (req: NextRequest) => {
 
   const roomId = roomMatch[1]
 
+  const existingToken = req.cookies.get("x-auth-token")?.value
+
+
+  if (!existingToken) {
+    const newToken = nanoid()
+    const response = NextResponse.redirect(req.url)
+    response.cookies.set("x-auth-token", newToken, {
+      path: "/",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    })
+    return response
+  }
+
   const meta = await redis.hgetall(
     `meta:${roomId}`
   ) as { connected: string | string[]; createdAt: number } | null
@@ -18,14 +33,11 @@ export const middleware = async (req: NextRequest) => {
     return NextResponse.redirect(new URL("/?error=room-not-found", req.url))
   }
 
-  // Parse connected array if it comes back as a string (Upstash behavior)
   const connected: string[] = typeof meta.connected === "string" 
     ? JSON.parse(meta.connected) 
     : meta.connected || []
 
-  const existingToken = req.cookies.get("x-auth-token")?.value
-
-  if (existingToken && connected.includes(existingToken)) {
+  if (connected.includes(existingToken)) {
     return NextResponse.next()
   }
 
@@ -33,22 +45,11 @@ export const middleware = async (req: NextRequest) => {
     return NextResponse.redirect(new URL("/?error=room-full", req.url))
   }
 
-  const response = NextResponse.next()
-
-  const token = nanoid()
-
-  response.cookies.set("x-auth-token", token, {
-    path: "/",
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-  })
-
   await redis.hset(`meta:${roomId}`, {
-    connected: JSON.stringify([...connected, token]),
+    connected: JSON.stringify([...connected, existingToken]),
   })
 
-  return response
+  return NextResponse.next()
 }
 
 export const config = {
