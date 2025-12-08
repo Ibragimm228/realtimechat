@@ -45,7 +45,7 @@ export const middleware = async (req: NextRequest) => {
   })
 
   await redis.hset(`meta:${roomId}`, {
-    connected: [...connected, token],
+    connected: JSON.stringify([...connected, token]),
   })
 
   return response
