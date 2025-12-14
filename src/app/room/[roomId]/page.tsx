@@ -234,7 +234,6 @@ const Page = () => {
               placeholder="Type message..."
               onChange={(e) => {
                 setInput(e.target.value)
-                handleTyping()
               }}
               className="w-full bg-muted/50 border border-input focus:border-ring focus:outline-none transition-all text-foreground placeholder:text-muted-foreground py-3 pl-8 pr-4 text-sm rounded-lg"
             />
