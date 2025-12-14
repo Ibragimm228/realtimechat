@@ -1,33 +1,32 @@
-import { nanoid } from "nanoid"
-import { useEffect, useState } from "react"
+import { generateRandomName } from "@/lib/name-generator"
+import { useSyncExternalStore, useCallback } from "react"
 
-const ANIMALS = ["wolf", "hawk", "bear", "shark"]
 const STORAGE_KEY = "chat_username"
 
-const generateUsername = () => {
-  const word = ANIMALS[Math.floor(Math.random() * ANIMALS.length)]
-  return `anonymous-${word}-${nanoid(5)}`
+const getSnapshot = () => {
+  if (typeof window === "undefined") return ""
+  const stored = localStorage.getItem(STORAGE_KEY)
+  if (stored) return stored
+  const generated = generateRandomName()
+  localStorage.setItem(STORAGE_KEY, generated)
+  return generated
+}
+
+const getServerSnapshot = () => ""
+
+const subscribe = (callback: () => void) => {
+  window.addEventListener("storage", callback)
+  return () => window.removeEventListener("storage", callback)
 }
 
 export const useUsername = () => {
-  const [username, setUsername] = useState("")
+  const username = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 
-  useEffect(() => {
-    const main = () => {
-      const stored = localStorage.getItem(STORAGE_KEY)
-
-      if (stored) {
-        setUsername(stored)
-        return
-      }
-
-      const generated = generateUsername()
-      localStorage.setItem(STORAGE_KEY, generated)
-      setUsername(generated)
-    }
-
-    main()
+  const regenerate = useCallback(() => {
+    const newName = generateRandomName()
+    localStorage.setItem(STORAGE_KEY, newName)
+    window.dispatchEvent(new Event("storage"))
   }, [])
 
-  return { username }
+  return { username: username || "...", regenerate }
 }

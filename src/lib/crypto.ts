@@ -64,7 +64,7 @@ export async function decryptMessage(encryptedText: string, key: CryptoKey): Pro
     )
 
     return new TextDecoder().decode(decrypted)
-  } catch (e) {
+  } catch {
     return "🔒 Decryption failed"
   }
 }

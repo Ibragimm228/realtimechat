@@ -4,21 +4,44 @@ import { nanoid } from "nanoid"
 import { authMiddleware } from "./auth"
 import { z } from "zod"
 import { Message, realtime } from "@/lib/realtime"
+import { Ratelimit } from "@upstash/ratelimit"
 
-const ROOM_TTL_SECONDS =60 * 10
+const ratelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(10, "10 s"),
+  prefix: "@upstash/ratelimit",
+})
+
+const rateLimitMiddleware = new Elysia({ name: "ratelimit" })
+  .derive(async ({ request, set }) => {
+    const ip = request.headers.get("x-forwarded-for") || "127.0.0.1"
+    const { success } = await ratelimit.limit(ip)
+    if (!success) {
+      set.status = 429
+      throw new Error("Rate limit exceeded")
+    }
+  })
 
 const rooms = new Elysia({ prefix: "/room" })
-  .post("/create", async () => {
+  .use(rateLimitMiddleware)
+  .post("/create", async ({ body }) => {
+    const { ttl = 600, capacity = 2 } = body
     const roomId = nanoid()
 
     await redis.hset(`meta:${roomId}`, {
       connected: JSON.stringify([]),
+      capacity,
       createdAt: Date.now(),
     })
 
-    await redis.expire(`meta:${roomId}`, ROOM_TTL_SECONDS)
+    await redis.expire(`meta:${roomId}`, ttl)
 
     return { roomId }
+  }, {
+    body: t.Object({
+      ttl: t.Optional(t.Number()),
+      capacity: t.Optional(t.Number())
+    })
   })
   .use(authMiddleware)
   .get(
@@ -32,7 +55,11 @@ const rooms = new Elysia({ prefix: "/room" })
   .delete(
     "/",
     async ({ auth }) => {
-      await realtime.channel(auth.roomId).emit("chat.destroy", { isDestroyed: true })
+      await realtime.channel(auth.roomId).emit("chat.destroy", { 
+        isDestroyed: true, 
+        roomId: auth.roomId, 
+        timestamp: Date.now() 
+      })
 
       await Promise.all([
         redis.del(auth.roomId),
@@ -44,6 +71,7 @@ const rooms = new Elysia({ prefix: "/room" })
   )
 
 const messages = new Elysia({ prefix: "/messages" })
+  .use(rateLimitMiddleware)
   .use(authMiddleware)
   .post(
     "/",
@@ -79,6 +107,26 @@ const messages = new Elysia({ prefix: "/messages" })
       body: z.object({
         sender: z.string().max(100),
         text: z.string().max(5000),
+      }),
+    }
+  )
+  .post(
+    "/typing",
+    async ({ body, auth }) => {
+      const { isTyping, username } = body
+      await realtime.channel(auth.roomId).emit("chat.typing", {
+        roomId: auth.roomId,
+        token: auth.token,
+        username,
+        isTyping,
+        timestamp: Date.now(),
+      })
+    },
+    {
+      query: z.object({ roomId: z.string() }),
+      body: z.object({
+        username: z.string(),
+        isTyping: z.boolean(),
       }),
     }
   )

@@ -1,7 +1,7 @@
 "use client"
 
-import { themes, type Theme } from "@/lib/themes"
-import { createContext, useContext, useEffect, useState } from "react"
+import { themes } from "@/lib/themes"
+import { createContext, useContext, useEffect, useSyncExternalStore, useCallback, useRef } from "react"
 
 type ThemeContextType = {
   theme: string
@@ -15,51 +15,46 @@ const ThemeContext = createContext<ThemeContextType>({
   availableThemes: [],
 })
 
-export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
-  const [theme, setTheme] = useState("default")
-  const [mounted, setMounted] = useState(false)
+const getThemeSnapshot = () => {
+  if (typeof window === "undefined") return "default"
+  const saved = localStorage.getItem("theme")
+  if (saved && themes[saved]) return saved
+  const keys = Object.keys(themes)
+  return keys.length > 0 ? keys[0] : "default"
+}
 
-  // Initialize theme from localStorage
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("theme")
-    if (savedTheme && themes[savedTheme]) {
-      setTheme(savedTheme)
-    } else {
-      // Find a default or just use the first one
-      const keys = Object.keys(themes)
-      if (keys.length > 0) {
-        setTheme(keys[0])
-      }
+const getServerThemeSnapshot = () => "default"
+
+const subscribeTheme = (callback: () => void) => {
+  window.addEventListener("storage", callback)
+  return () => window.removeEventListener("storage", callback)
+}
+
+export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
+  const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot, getServerThemeSnapshot)
+  const mounted = useRef(false)
+
+  const setTheme = useCallback((newTheme: string) => {
+    if (themes[newTheme]) {
+      localStorage.setItem("theme", newTheme)
+      window.dispatchEvent(new Event("storage"))
     }
-    setMounted(true)
   }, [])
 
-  // Apply theme variables
   useEffect(() => {
-    if (!mounted) return
-
+    mounted.current = true
+    
     const themeData = themes[theme]
     if (!themeData) return
 
     const root = document.documentElement
-    const vars = themeData.light // Currently only supporting light mode or we can auto-detect
-    
-    // Check system preference for dark mode if theme supports it
-    // For simplicity, we'll just apply 'light' for now unless we add a dark mode toggle
-    // Or we can merge them if the user wants auto-switching. 
-    // Given the request, let's stick to the 'light' definitions as the base for the theme
-    // but actually most themes provided had .dark block too.
-    
-    // Let's implement basic dark mode support:
     const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches
     const activeVars = isDark && themeData.dark ? themeData.dark : themeData.light
 
     Object.entries(activeVars).forEach(([key, value]) => {
       root.style.setProperty(key, value)
     })
-
-    localStorage.setItem("theme", theme)
-  }, [theme, mounted])
+  }, [theme])
 
   return (
     <ThemeContext.Provider

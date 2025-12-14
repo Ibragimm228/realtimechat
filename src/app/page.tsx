@@ -6,7 +6,7 @@ import { client } from "@/lib/client"
 import { ThemeSelector } from "@/components/theme-selector"
 import { useMutation } from "@tanstack/react-query"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Suspense } from "react"
+import { Suspense, useState } from "react"
 
 const Page = () => {
   return (
@@ -19,16 +19,22 @@ const Page = () => {
 export default Page
 
 function Lobby() {
-  const { username } = useUsername()
+  const { username, regenerate } = useUsername()
   const router = useRouter()
 
   const searchParams = useSearchParams()
   const wasDestroyed = searchParams.get("destroyed") === "true"
   const error = searchParams.get("error")
 
+  const [capacity, setCapacity] = useState("2")
+  const [duration, setDuration] = useState("600")
+
   const { mutate: createRoom } = useMutation({
     mutationFn: async () => {
-      const res = await client.room.create.post()
+      const res = await client.room.create.post({
+        capacity: parseInt(capacity),
+        ttl: parseInt(duration),
+      })
       const key = await generateKey()
 
       if (res.status === 200) {
@@ -67,6 +73,14 @@ function Lobby() {
             </p>
           </div>
         )}
+        {error === "invalid-room" && (
+          <div className="bg-destructive/10 border border-destructive/50 p-4 text-center rounded-lg">
+            <p className="text-destructive text-sm font-bold">INVALID ROOM</p>
+            <p className="text-muted-foreground text-xs mt-1">
+              The room ID format is invalid.
+            </p>
+          </div>
+        )}
 
         <div className="text-center space-y-2">
           <h1 className="text-2xl font-bold tracking-tight text-primary">
@@ -93,9 +107,50 @@ function Lobby() {
               <label className="flex items-center text-muted-foreground text-xs uppercase font-bold tracking-wider">Your Identity</label>
 
               <div className="flex items-center gap-3">
-                <div className="flex-1 bg-muted border border-input p-3 text-sm text-foreground font-mono rounded-md">
+                <div className="flex-1 bg-muted border border-input p-3 text-sm text-foreground font-mono rounded-md truncate">
                   {username}
                 </div>
+                <button 
+                  onClick={regenerate}
+                  className="bg-muted border border-input p-3 rounded-md hover:bg-secondary hover:text-secondary-foreground transition-colors group"
+                  title="Generate new identity"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:rotate-180 transition-transform duration-500">
+                    <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                    <path d="M3 3v5h5"/>
+                    <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                    <path d="M16 16h5v5"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-muted-foreground text-xs uppercase font-bold tracking-wider">Max Users</label>
+                <select 
+                  value={capacity}
+                  onChange={(e) => setCapacity(e.target.value)}
+                  className="w-full bg-muted border border-input p-3 text-sm text-foreground font-mono rounded-md focus:outline-none focus:border-primary transition-colors cursor-pointer"
+                >
+                  <option value="2">2 Users</option>
+                  <option value="5">5 Users</option>
+                  <option value="10">10 Users</option>
+                  <option value="50">50 Users</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-muted-foreground text-xs uppercase font-bold tracking-wider">Duration</label>
+                <select 
+                  value={duration}
+                  onChange={(e) => setDuration(e.target.value)}
+                  className="w-full bg-muted border border-input p-3 text-sm text-foreground font-mono rounded-md focus:outline-none focus:border-primary transition-colors cursor-pointer"
+                >
+                  <option value="600">10 Minutes</option>
+                  <option value="3600">1 Hour</option>
+                  <option value="86400">24 Hours</option>
+                </select>
               </div>
             </div>
 

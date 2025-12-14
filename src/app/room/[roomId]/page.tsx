@@ -30,6 +30,8 @@ const Page = () => {
   const [copyStatus, setCopyStatus] = useState("COPY LINK")
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
   const [encryptionKey, setEncryptionKey] = useState<CryptoKey | null>(null)
+  const [typingUsers, setTypingUsers] = useState<string[]>([])
+  const typingTimeoutRef = useRef<NodeJS.Timeout>(null)
 
   useEffect(() => {
     const hash = window.location.hash.slice(1)
@@ -83,7 +85,14 @@ const Page = () => {
     mutationFn: async ({ text }: { text: string }) => {
       if (!encryptionKey) return
       
-      const encrypted = await encryptMessage(text, encryptionKey)
+      let messageContent = text
+      
+      if (text.startsWith("/w ") || text.startsWith("/whisper ")) {
+        const cleanText = text.replace(/^\/(w|whisper)\s+/, "")
+        messageContent = `WHISPER:::${cleanText}`
+      }
+
+      const encrypted = await encryptMessage(messageContent, encryptionKey)
       await client.messages.post({ sender: username, text: encrypted }, { query: { roomId } })
 
       setInput("")
@@ -202,6 +211,11 @@ const Page = () => {
       </div>
 
       <div className="p-4 border-t border-border bg-background/80 backdrop-blur-md">
+        {typingUsers.length > 0 && (
+          <div className="text-[10px] text-muted-foreground animate-pulse mb-2 px-4 font-medium">
+            {typingUsers.join(", ")} {typingUsers.length === 1 ? "is" : "are"} typing...
+          </div>
+        )}
         <div className="flex gap-4 max-w-4xl mx-auto w-full">
           <div className="flex-1 relative group">
             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors">
@@ -212,13 +226,16 @@ const Page = () => {
               type="text"
               value={input}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && input.trim()) {
+                if (e.key === "Enter" && !e.repeat && input.trim() && !isPending) {
                   sendMessage({ text: input })
                   inputRef.current?.focus()
                 }
               }}
               placeholder="Type message..."
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value)
+                handleTyping()
+              }}
               className="w-full bg-muted/50 border border-input focus:border-ring focus:outline-none transition-all text-foreground placeholder:text-muted-foreground py-3 pl-8 pr-4 text-sm rounded-lg"
             />
           </div>
