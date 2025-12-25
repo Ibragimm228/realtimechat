@@ -17,7 +17,7 @@
     "date-fns": "^4.1.0",
     "elysia": "^1.4.18",
     "nanoid": "^5.1.6",
-    "next": "^16.0.7",
+    "next": "^16.0.10",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "theme-selector": "^0.1.3",
@@ -30,7 +30,7 @@
     "@types/react-dom": "^19.2.3",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9.39.1",
-    "eslint-config-next": "16.0.6",
+    "eslint-config-next": "^16.0.10",
     "tailwindcss": "^4.1.17",
     "typescript": "^5.9.3"
   }
