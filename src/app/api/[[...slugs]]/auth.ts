@@ -26,9 +26,19 @@ export const authMiddleware = new Elysia({ name: "auth" })
 
     const rawConnected = await redis.hget<string | string[]>(`meta:${roomId}`, "connected")
     
-    const connected: string[] = typeof rawConnected === "string" 
-      ? JSON.parse(rawConnected) 
-      : rawConnected || []
+    let connected: string[] = []
+    if (typeof rawConnected === "string") {
+      try {
+        connected = JSON.parse(rawConnected)
+      } catch (e) {
+        console.error("Failed to parse connected users:", e)
+        connected = []
+      }
+    } else if (Array.isArray(rawConnected)) {
+      connected = rawConnected
+    } else {
+      connected = []
+    }
 
     if (!connected.includes(token)) {
       throw new AuthError("Invalid token")

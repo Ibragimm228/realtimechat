@@ -32,7 +32,7 @@ export const ThemeSelector = () => {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-64 max-h-96 overflow-y-auto bg-card border border-border rounded-lg shadow-xl z-50 py-1 scrollbar-thin">
+        <div className="absolute right-0 mt-2 w-64 max-h-96 overflow-y-auto bg-card border border-border rounded-lg shadow-xl z-50 py-1">
           <div className="sticky top-0 bg-card p-2 border-b border-border mb-1 z-10">
              <span className="text-[10px] text-muted-foreground uppercase font-bold pl-2">Select Theme</span>
           </div>

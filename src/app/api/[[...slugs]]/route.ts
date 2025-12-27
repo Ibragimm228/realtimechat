@@ -2,7 +2,6 @@ import { redis } from "@/lib/redis"
 import { Elysia, t } from "elysia"
 import { nanoid } from "nanoid"
 import { authMiddleware } from "./auth"
-import { z } from "zod"
 import { Message, realtime } from "@/lib/realtime"
 import { Ratelimit } from "@upstash/ratelimit"
 
@@ -15,10 +14,14 @@ const ratelimit = new Ratelimit({
 const rateLimitMiddleware = new Elysia({ name: "ratelimit" })
   .derive(async ({ request, set }) => {
     const ip = request.headers.get("x-forwarded-for") || "127.0.0.1"
-    const { success } = await ratelimit.limit(ip)
-    if (!success) {
-      set.status = 429
-      throw new Error("Rate limit exceeded")
+    try {
+      const { success } = await ratelimit.limit(ip)
+      if (!success) {
+        set.status = 429
+        throw new Error("Rate limit exceeded")
+      }
+    } catch (e) {
+      console.error("Ratelimit error:", e)
     }
   })
 
@@ -50,7 +53,11 @@ const rooms = new Elysia({ prefix: "/room" })
       const ttl = await redis.ttl(`meta:${auth.roomId}`)
       return { ttl: ttl > 0 ? ttl : 0 }
     },
-    { query: z.object({ roomId: z.string() }) }
+    { 
+      query: t.Object({ 
+        roomId: t.String() 
+      }) 
+    }
   )
   .delete(
     "/",
@@ -65,9 +72,15 @@ const rooms = new Elysia({ prefix: "/room" })
         redis.del(auth.roomId),
         redis.del(`meta:${auth.roomId}`),
         redis.del(`messages:${auth.roomId}`),
+        redis.del(`history:${auth.roomId}`),
+        redis.del(`users:${auth.roomId}`),
       ])
     },
-    { query: z.object({ roomId: z.string() }) }
+    { 
+      query: t.Object({ 
+        roomId: t.String() 
+      }) 
+    }
   )
 
 const messages = new Elysia({ prefix: "/messages" })
@@ -85,9 +98,21 @@ const messages = new Elysia({ prefix: "/messages" })
         throw new Error("Room does not exist")
       }
 
+      const userKey = `users:${roomId}`
+      let finalSender = sender
+      
+      const storedName = await redis.hget<string>(userKey, auth.token)
+      if (storedName) {
+        finalSender = storedName
+      } else {
+        await redis.hset(userKey, { [auth.token]: sender })
+        const remaining = await redis.ttl(`meta:${roomId}`)
+        if (remaining > 0) await redis.expire(userKey, remaining)
+      }
+
       const message: Message = {
         id: nanoid(),
-        sender,
+        sender: finalSender,
         text,
         timestamp: Date.now(),
         roomId,
@@ -98,15 +123,19 @@ const messages = new Elysia({ prefix: "/messages" })
 
       const remaining = await redis.ttl(`meta:${roomId}`)
 
-      await redis.expire(`messages:${roomId}`, remaining)
-      await redis.expire(`history:${roomId}`, remaining)
-      await redis.expire(roomId, remaining)
+      if (remaining > 0) {
+        await redis.expire(`messages:${roomId}`, remaining)
+        await redis.expire(`history:${roomId}`, remaining)
+        await redis.expire(roomId, remaining)
+      }
     },
     {
-      query: z.object({ roomId: z.string() }),
-      body: z.object({
-        sender: z.string().max(100),
-        text: z.string().max(5000),
+      query: t.Object({ 
+        roomId: t.String() 
+      }),
+      body: t.Object({
+        sender: t.String({ maxLength: 100 }),
+        text: t.String({ maxLength: 5000 }),
       }),
     }
   )
@@ -114,19 +143,25 @@ const messages = new Elysia({ prefix: "/messages" })
     "/typing",
     async ({ body, auth }) => {
       const { isTyping, username } = body
-      await realtime.channel(auth.roomId).emit("chat.typing", {
-        roomId: auth.roomId,
-        token: auth.token,
-        username,
+      const { roomId, token } = auth
+
+      const storedName = await redis.hget<string>(`users:${roomId}`, token)
+      const finalUsername = storedName || username
+
+      await realtime.channel(roomId).emit("chat.typing", {
+        roomId,
+        username: finalUsername,
         isTyping,
         timestamp: Date.now(),
       })
     },
     {
-      query: z.object({ roomId: z.string() }),
-      body: z.object({
-        username: z.string(),
-        isTyping: z.boolean(),
+      query: t.Object({ 
+        roomId: t.String() 
+      }),
+      body: t.Object({
+        username: t.String(),
+        isTyping: t.Boolean(),
       }),
     }
   )
@@ -136,19 +171,57 @@ const messages = new Elysia({ prefix: "/messages" })
       const messages = await redis.lrange<Message>(`messages:${auth.roomId}`, 0, -1)
 
       return {
-        messages: messages.map((m) => ({
+        messages: (messages || []).map((m) => ({
           ...m,
           token: m.token === auth.token ? auth.token : undefined,
         })),
       }
     },
-    { query: z.object({ roomId: z.string() }) }
+    { 
+      query: t.Object({ 
+        roomId: t.String() 
+      }) 
+    }
+  )
+  .delete(
+    "/",
+    async ({ query, auth }) => {
+      const { messageId } = query
+      const messages = await redis.lrange<Message>(`messages:${auth.roomId}`, 0, -1)
+      const messageIndex = messages.findIndex((m) => m.id === messageId)
+
+      if (messageIndex !== -1) {
+        const messageToDelete = messages[messageIndex]
+        await redis.lrem(`messages:${auth.roomId}`, 1, messageToDelete)
+        await realtime.channel(auth.roomId).emit("chat.delete", { 
+          messageId, 
+          roomId: auth.roomId,
+          timestamp: Date.now()
+        })
+      }
+    },
+    {
+      query: t.Object({
+        roomId: t.String(),
+        messageId: t.String(),
+      })
+    }
   )
 
-const app = new Elysia({ prefix: "/api" }).use(rooms).use(messages)
+const app = new Elysia({ prefix: "/api" })
+  .onError(({ code, error, set }) => {
+    console.error(`API Error (${code}):`, error)
+    set.status = 500
+    return { error: "Internal Server Error", message: error.message }
+  })
+  .use(rooms)
+  .use(messages)
 
-export const GET = app.fetch
-export const POST = app.fetch
-export const DELETE = app.fetch
+export const GET = (req: Request) => app.handle(req)
+export const POST = (req: Request) => app.handle(req)
+export const DELETE = (req: Request) => app.handle(req)
+
+export type App = typeof app
+
 
 export type App = typeof app

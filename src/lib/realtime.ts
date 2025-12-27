@@ -39,6 +39,12 @@ export const destroy = z.object({
   timestamp: z.number().int().nonnegative(),
 })
 
+export const deleteMessage = z.object({
+  messageId: z.string(),
+  roomId,
+  timestamp: z.number().int().nonnegative(),
+})
+
 const schema = {
   chat: {
     message,
@@ -46,6 +52,7 @@ const schema = {
     leave: presenceLeave,
     typing,
     destroy,
+    delete: deleteMessage,
   },
 } as const
 
