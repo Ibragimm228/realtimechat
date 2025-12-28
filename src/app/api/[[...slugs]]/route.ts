@@ -150,6 +150,7 @@ const messages = new Elysia({ prefix: "/messages" })
 
       await realtime.channel(roomId).emit("chat.typing", {
         roomId,
+        token,
         username: finalUsername,
         isTyping,
         timestamp: Date.now(),
@@ -220,8 +221,5 @@ const app = new Elysia({ prefix: "/api" })
 export const GET = (req: Request) => app.handle(req)
 export const POST = (req: Request) => app.handle(req)
 export const DELETE = (req: Request) => app.handle(req)
-
-export type App = typeof app
-
 
 export type App = typeof app
