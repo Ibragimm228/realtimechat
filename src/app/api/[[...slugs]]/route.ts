@@ -213,7 +213,12 @@ const app = new Elysia({ prefix: "/api" })
   .onError(({ code, error, set }) => {
     console.error(`API Error (${code}):`, error)
     set.status = 500
-    return { error: "Internal Server Error", message: error.message }
+    const message = error instanceof Error 
+      ? error.message 
+      : (error && typeof error === "object" && "message" in error)
+        ? (error as any).message
+        : String(error)
+    return { error: "Internal Server Error", message }
   })
   .use(rooms)
   .use(messages)
