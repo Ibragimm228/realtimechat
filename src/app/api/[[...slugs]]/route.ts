@@ -11,6 +11,12 @@ const ratelimit = new Ratelimit({
   prefix: "@upstash/ratelimit",
 })
 
+const MAX_TTL = 86400 // 24 hours
+const MIN_TTL = 60    // 1 minute
+const MAX_CAPACITY = 50
+const MIN_CAPACITY = 2
+const MAX_MESSAGES = 200 // Maximum messages per room history
+
 const rateLimitMiddleware = new Elysia({ name: "ratelimit" })
   .derive(async ({ request, set }) => {
     const ip = request.headers.get("x-forwarded-for") || "127.0.0.1"
@@ -42,8 +48,16 @@ const rooms = new Elysia({ prefix: "/room" })
     return { roomId }
   }, {
     body: t.Object({
-      ttl: t.Optional(t.Number()),
-      capacity: t.Optional(t.Number())
+      ttl: t.Optional(t.Number({ 
+        minimum: MIN_TTL, 
+        maximum: MAX_TTL,
+        default: 600
+      })),
+      capacity: t.Optional(t.Number({ 
+        minimum: MIN_CAPACITY, 
+        maximum: MAX_CAPACITY,
+        default: 2
+      }))
     })
   })
   .use(authMiddleware)
@@ -55,7 +69,7 @@ const rooms = new Elysia({ prefix: "/room" })
     },
     { 
       query: t.Object({ 
-        roomId: t.String() 
+        roomId: t.String({ maxLength: 50 }) 
       }) 
     }
   )
@@ -78,7 +92,7 @@ const rooms = new Elysia({ prefix: "/room" })
     },
     { 
       query: t.Object({ 
-        roomId: t.String() 
+        roomId: t.String({ maxLength: 50 }) 
       }) 
     }
   )
@@ -119,6 +133,7 @@ const messages = new Elysia({ prefix: "/messages" })
       }
 
       await redis.rpush(`messages:${roomId}`, { ...message, token: auth.token })
+      await redis.ltrim(`messages:${roomId}`, -MAX_MESSAGES, -1)
       await realtime.channel(roomId).emit("chat.message", message)
 
       const remaining = await redis.ttl(`meta:${roomId}`)
@@ -131,7 +146,7 @@ const messages = new Elysia({ prefix: "/messages" })
     },
     {
       query: t.Object({ 
-        roomId: t.String() 
+        roomId: t.String({ maxLength: 50 }) 
       }),
       body: t.Object({
         sender: t.String({ maxLength: 100 }),
@@ -158,10 +173,10 @@ const messages = new Elysia({ prefix: "/messages" })
     },
     {
       query: t.Object({ 
-        roomId: t.String() 
+        roomId: t.String({ maxLength: 50 }) 
       }),
       body: t.Object({
-        username: t.String(),
+        username: t.String({ maxLength: 100 }),
         isTyping: t.Boolean(),
       }),
     }
@@ -180,7 +195,7 @@ const messages = new Elysia({ prefix: "/messages" })
     },
     { 
       query: t.Object({ 
-        roomId: t.String() 
+        roomId: t.String({ maxLength: 50 }) 
       }) 
     }
   )
@@ -203,8 +218,8 @@ const messages = new Elysia({ prefix: "/messages" })
     },
     {
       query: t.Object({
-        roomId: t.String(),
-        messageId: t.String(),
+        roomId: t.String({ maxLength: 50 }),
+        messageId: t.String({ maxLength: 50 }),
       })
     }
   )

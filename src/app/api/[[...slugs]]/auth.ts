@@ -24,6 +24,10 @@ export const authMiddleware = new Elysia({ name: "auth" })
       throw new AuthError("Missing roomId or token.")
     }
 
+    if (roomId.length > 50 || token.length > 100) {
+      throw new AuthError("Invalid roomId or token format.")
+    }
+
     const rawConnected = await redis.hget<string | string[]>(`meta:${roomId}`, "connected")
     
     let connected: string[] = []
