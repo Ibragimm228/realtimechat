@@ -45,6 +45,25 @@ export const deleteMessage = z.object({
   timestamp: z.number().int().nonnegative(),
 })
 
+export const react = z.object({
+  messageId: z.string(),
+  emoji: z.string().max(8),
+  token: token,
+  action: z.enum(["add", "remove"]),
+  roomId,
+  timestamp: z.number().int().nonnegative(),
+})
+
+export const pin = z.object({
+  messageId: z.string(),
+  sender: username,
+  text: z.string().max(2000),
+  action: z.enum(["pin", "unpin"]),
+  pinnedBy: username,
+  roomId,
+  timestamp: z.number().int().nonnegative(),
+})
+
 const schema = {
   chat: {
     message,
@@ -53,6 +72,27 @@ const schema = {
     typing,
     destroy,
     delete: deleteMessage,
+    react,
+    pin,
+  },
+  channel: {
+    message,
+    join: presenceJoin,
+    leave: presenceLeave,
+    typing,
+    delete: deleteMessage,
+    react,
+    pin,
+  },
+  group: {
+    message,
+    join: presenceJoin,
+    leave: presenceLeave,
+    typing,
+    destroy,
+    delete: deleteMessage,
+    react,
+    pin,
   },
 } as const
 

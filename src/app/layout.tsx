@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { JetBrains_Mono } from "next/font/google"
 import "./globals.css"
 import { Providers } from "@/components/providers"
@@ -10,7 +10,21 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: ">private_chat",
-  description: "Created by @FrontendMania",
+  description: "End-to-end encrypted, self-destructing chat rooms. No accounts, no logs, no traces.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: ">private_chat",
+  },
+}
+
+export const viewport: Viewport = {
+  themeColor: "#000000",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 }
 
 export default function RootLayout({
@@ -20,6 +34,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <link rel="apple-touch-icon" href="/icon-192.svg" />
+      </head>
       <body className={`${jetbrainsMono.variable} antialiased`} suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
