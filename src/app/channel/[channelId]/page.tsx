@@ -211,12 +211,14 @@ const Page = () => {
                 </div>
               )}
               <div className="max-w-3xl mx-auto w-full flex items-end gap-2.5">
-                <div className="flex-1 flex items-end gap-2 bg-card rounded-[22px] px-3.5 py-2.5 shadow-sm border border-border transition-all focus-within:ring-2 focus-within:ring-primary/20">
+              <div className="flex-1 flex items-end gap-2 bg-card rounded-[22px] px-3.5 py-1.5 shadow-sm border border-border transition-all focus-within:ring-2 focus-within:ring-primary/20">
+                <div className="flex items-center gap-1">
                   <FileAttach onFile={(f) => sendFile(f)} />
                   <VoiceRecorder onSend={(f) => sendFile(f)} />
                   <EmojiPicker onSelect={(emoji) => setInput((prev) => prev + emoji)} />
-                  <textarea ref={inputRef} autoFocus rows={1} value={input} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (input.trim() && !isPending) { sendMessage({ text: input }); sendTyping(false) } } }} placeholder="Message..." onChange={(e) => { setInput(e.target.value); if (e.target.value) handleTyping(); e.target.style.height = "inherit"; e.target.style.height = `${Math.min(e.target.scrollHeight, 180)}px` }} className="flex-1 w-full bg-transparent border-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 text-[15px] leading-[22px] p-0 text-foreground placeholder:text-muted-foreground resize-none overflow-y-auto block min-h-[22px] max-h-48" />
                 </div>
+                <textarea ref={inputRef} autoFocus rows={1} value={input} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (input.trim() && !isPending) { sendMessage({ text: input }); sendTyping(false) } } }} placeholder="Message..." onChange={(e) => { setInput(e.target.value); if (e.target.value) handleTyping(); e.target.style.height = "inherit"; e.target.style.height = `${Math.min(e.target.scrollHeight, 180)}px` }} className="flex-1 w-full bg-transparent border-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 text-[15px] leading-[22px] py-[5px] text-foreground placeholder:text-muted-foreground resize-none overflow-y-auto block min-h-[32px] max-h-48" />
+              </div>
                 <button onClick={() => { if (input.trim() && !isPending) { sendMessage({ text: input }); sendTyping(false); inputRef.current?.focus() } }} disabled={!input.trim() || isPending || !encryptionKey} className="w-11 h-11 flex items-center justify-center bg-primary text-primary-foreground rounded-full hover:opacity-90 transition-all disabled:opacity-0 disabled:scale-90 scale-100 shadow-md shrink-0 active:scale-95">
                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="ml-0.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 </button>

@@ -292,9 +292,11 @@ const Page = () => {
           <div className="flex flex-col gap-2 max-w-4xl mx-auto w-full">
             <div className="flex gap-2 md:gap-3">
               <div className="flex-1 relative flex items-end gap-1 bg-muted/50 border border-input focus-within:border-ring rounded-lg transition-all px-2">
-                <FileAttach onFile={(f) => sendFile(f)} />
-                <VoiceRecorder onSend={(f) => sendFile(f)} />
-                <EmojiPicker onSelect={(emoji) => setInput((prev) => prev + emoji)} />
+                <div className="flex items-center gap-1 mb-1.5">
+                  <FileAttach onFile={(f) => sendFile(f)} />
+                  <VoiceRecorder onSend={(f) => sendFile(f)} />
+                  <EmojiPicker onSelect={(emoji) => setInput((prev) => prev + emoji)} />
+                </div>
                 <textarea ref={inputRef} autoFocus rows={1} value={input} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (input.trim() && !isPending) { sendMessage({ text: input }); sendTyping(false) } } }} placeholder="Message..." onChange={(e) => { setInput(e.target.value); if (e.target.value) handleTyping(); e.target.style.height = "inherit"; e.target.style.height = `${e.target.scrollHeight}px` }} className="flex-1 bg-transparent focus:outline-none transition-all text-foreground placeholder:text-muted-foreground py-3 text-sm resize-none max-h-48 overflow-y-auto block" />
               </div>
               <button onClick={() => { if (input.trim() && !isPending) { sendMessage({ text: input }); sendTyping(false); inputRef.current?.focus() } }} disabled={!input.trim() || isPending || !encryptionKey} className="bg-primary text-primary-foreground px-5 md:px-6 text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer rounded-lg shadow-lg shadow-primary/10 active:scale-95 self-end h-[46px]">
