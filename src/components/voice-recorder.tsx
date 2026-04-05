@@ -11,10 +11,18 @@ export function VoiceRecorder({ onSend }: VoiceRecorderProps) {
   const [duration, setDuration] = useState(0)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
-  const timerRef = useRef<NodeJS.Timeout>(null)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [])
+
+  const stopRecording = useCallback(() => {
+    if (recorderRef.current?.state === "recording") {
+      recorderRef.current.stop()
+    }
+    setIsRecording(false)
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
   }, [])
 
   const startRecording = useCallback(async () => {
@@ -41,15 +49,7 @@ export function VoiceRecorder({ onSend }: VoiceRecorderProps) {
         return d + 1
       }), 1000)
     } catch {}
-  }, [onSend])
-
-  const stopRecording = useCallback(() => {
-    if (recorderRef.current?.state === "recording") {
-      recorderRef.current.stop()
-    }
-    setIsRecording(false)
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
-  }, [])
+  }, [onSend, stopRecording])
 
   const cancelRecording = useCallback(() => {
     if (recorderRef.current?.state === "recording") {

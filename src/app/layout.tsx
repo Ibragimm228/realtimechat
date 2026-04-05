@@ -10,7 +10,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: ">private_chat",
-  description: "End-to-end encrypted, self-destructing chat rooms. No accounts, no logs, no traces.",
+  description: "Encrypted chat rooms with expiring room timers and shareable invite links.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

@@ -1,6 +1,7 @@
 "use client"
 
 import { useActiveChats, type ActiveChat, type ChatType } from "@/hooks/use-active-chats"
+import Link from "next/link"
 import { useState, useRef, useEffect } from "react"
 import { formatDistanceToNow } from "date-fns"
 
@@ -152,7 +153,7 @@ export function ChatSidebar({
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <a
+            <Link
               href="/"
               className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
               title="Home"
@@ -160,7 +161,7 @@ export function ChatSidebar({
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
               </svg>
-            </a>
+            </Link>
             <button
               onClick={() => setIsOpen(false)}
               className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
@@ -181,9 +182,9 @@ export function ChatSidebar({
                 </svg>
               </div>
               <p className="text-muted-foreground text-xs">No active chats</p>
-              <a href="/" className="text-primary text-xs font-bold mt-2 inline-block hover:underline">
+              <Link href="/" className="text-primary text-xs font-bold mt-2 inline-block hover:underline">
                 Create one
-              </a>
+              </Link>
             </div>
           )}
 

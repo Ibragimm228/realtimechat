@@ -20,10 +20,9 @@ interface Reaction {
 interface MessageReactionsProps {
   reactions: Reaction[]
   onReact: (emoji: string) => void
-  compact?: boolean
 }
 
-export function MessageReactions({ reactions, onReact, compact }: MessageReactionsProps) {
+export function MessageReactions({ reactions, onReact }: MessageReactionsProps) {
   const [showPicker, setShowPicker] = useState(false)
 
   const activeReactions = reactions.filter((r) => r.count > 0)

@@ -14,6 +14,14 @@ export function MessageSearch({ decryptedTexts, onHighlight }: MessageSearchProp
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  const closeSearch = useCallback(() => {
+    setIsOpen(false)
+    setQuery("")
+    setResults([])
+    setActiveIndex(0)
+    onHighlight(null)
+  }, [onHighlight])
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "f") {
@@ -21,18 +29,16 @@ export function MessageSearch({ decryptedTexts, onHighlight }: MessageSearchProp
         setIsOpen((p) => !p)
       }
       if (e.key === "Escape" && isOpen) {
-        setIsOpen(false)
-        onHighlight(null)
+        closeSearch()
       }
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [isOpen, onHighlight])
+  }, [closeSearch, isOpen])
 
   useEffect(() => {
     if (isOpen) inputRef.current?.focus()
-    else { setQuery(""); setResults([]); onHighlight(null) }
-  }, [isOpen, onHighlight])
+  }, [isOpen])
 
   const search = useCallback((q: string) => {
     setQuery(q)
@@ -81,7 +87,7 @@ export function MessageSearch({ decryptedTexts, onHighlight }: MessageSearchProp
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
         </button>
       </div>
-      <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-muted rounded transition-colors text-muted-foreground">
+      <button onClick={closeSearch} className="p-1 hover:bg-muted rounded transition-colors text-muted-foreground">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>

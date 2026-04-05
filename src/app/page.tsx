@@ -35,7 +35,6 @@ function Lobby() {
 
   const [capacity, setCapacity] = useState("2")
   const [duration, setDuration] = useState("600")
-  const [inactivityTtl, setInactivityTtl] = useState("")
 
   const [activeTab, setActiveTab] = useState<"room" | "channel" | "group">("room")
   const [channelName, setChannelName] = useState("")
@@ -58,7 +57,6 @@ function Lobby() {
       const res = await client.room.create.post({
         capacity: parseInt(capacity),
         ttl: parseInt(duration),
-        ...(inactivityTtl ? { inactivityTtl: parseInt(inactivityTtl) } : {}),
       })
 
       if (res.status === 200 && res.data?.roomId) {
@@ -181,7 +179,7 @@ function Lobby() {
           <h1 className="text-2xl font-bold tracking-tight text-primary">
             {">"}private_chat
           </h1>
-          <p className="text-muted-foreground text-sm">A private, self-destructing chat room.</p>
+          <p className="text-muted-foreground text-sm">Encrypted chat rooms without sign-up.</p>
           
           <a 
             href="https://t.me/FrontendMania" 
@@ -319,27 +317,12 @@ function Lobby() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider block mb-1.5">Dead Man&apos;s Switch (optional)</label>
-                  <select
-                    value={inactivityTtl}
-                    onChange={(e) => setInactivityTtl(e.target.value)}
-                    className="w-full bg-muted border border-input p-3 text-sm text-foreground font-mono rounded-md focus:outline-none focus:border-primary transition-colors cursor-pointer"
-                  >
-                    <option value="">Disabled</option>
-                    <option value="5">5 min inactivity</option>
-                    <option value="15">15 min inactivity</option>
-                    <option value="30">30 min inactivity</option>
-                    <option value="60">1 hour inactivity</option>
-                  </select>
-                </div>
-
                 <button
                   onClick={() => createRoom()}
                   disabled={isCreatingRoom}
                   className="w-full bg-primary text-primary-foreground p-3 text-sm font-bold hover:opacity-90 transition-all mt-2 cursor-pointer disabled:opacity-50 rounded-md shadow-lg shadow-primary/20"
                 >
-                  {isCreatingRoom ? "CREATING..." : "CREATE SECURE ROOM"}
+                  {isCreatingRoom ? "CREATING..." : "CREATE ENCRYPTED ROOM"}
                 </button>
               </>
             )}

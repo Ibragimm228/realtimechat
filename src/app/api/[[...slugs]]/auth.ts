@@ -1,7 +1,10 @@
-import { redis } from "@/lib/redis"
 import Elysia from "elysia"
+import {
+  AUTH_COOKIE_NAME,
+  requireActiveMember,
+} from "@/lib/membership"
 
-class AuthError extends Error {
+export class AuthError extends Error {
   constructor(message: string) {
     super(message)
     this.name = "AuthError"
@@ -18,33 +21,19 @@ export const authMiddleware = new Elysia({ name: "auth" })
   })
   .derive({ as: "scoped" }, async ({ query, cookie }) => {
     const roomId = query.roomId
-    const token = cookie["x-auth-token"].value as string | undefined
+    const token = cookie[AUTH_COOKIE_NAME]?.value as string | undefined
 
     if (!roomId || !token) {
       throw new AuthError("Missing roomId or token.")
     }
 
-    if (roomId.length > 50 || token.length > 100) {
+    if (roomId.length > 64 || token.length > 128) {
       throw new AuthError("Invalid roomId or token format.")
     }
 
-    const rawConnected = await redis.hget<string | string[]>(`meta:${roomId}`, "connected")
-    
-    let connected: string[] = []
-    if (typeof rawConnected === "string") {
-      try {
-        connected = JSON.parse(rawConnected)
-      } catch (e) {
-        console.error("Failed to parse connected users:", e)
-        connected = []
-      }
-    } else if (Array.isArray(rawConnected)) {
-      connected = rawConnected
-    } else {
-      connected = []
-    }
+    const connected = await requireActiveMember("room", roomId, token)
 
-    if (!connected.includes(token)) {
+    if (!connected) {
       throw new AuthError("Invalid token")
     }
 

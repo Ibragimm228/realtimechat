@@ -66,6 +66,12 @@ export function useChatMessages({ type, id }: { type: ChatType; id: string }) {
     },
   })
 
+  useEffect(() => {
+    if (messages?.reactions) {
+      queueMicrotask(() => setReactions(messages.reactions))
+    }
+  }, [messages?.reactions])
+
   const { refetch: refetchPinned } = useQuery({
     queryKey: ["pinned", type, id],
     queryFn: async () => {
@@ -115,19 +121,7 @@ export function useChatMessages({ type, id }: { type: ChatType; id: string }) {
           )
         }
       }
-      if (event === rt.reactEvent) {
-        const rd = data as { messageId: string; emoji: string; action: string; token: string }
-        setReactions((prev) => {
-          const mr = { ...prev[rd.messageId] }
-          const cur = mr[rd.emoji] || { count: 0, hasReacted: false }
-          if (rd.action === "add") {
-            mr[rd.emoji] = { count: cur.count + 1, hasReacted: cur.hasReacted || rd.token === "self" }
-          } else {
-            mr[rd.emoji] = { count: Math.max(0, cur.count - 1), hasReacted: false }
-          }
-          return { ...prev, [rd.messageId]: mr }
-        })
-      }
+      if (event === rt.reactEvent) refetch()
       if (event === rt.pinEvent) {
         const pd = data as { messageId: string; sender: string; text: string; action: string; pinnedBy: string }
         if (pd.action === "pin") {
@@ -149,13 +143,15 @@ export function useChatMessages({ type, id }: { type: ChatType; id: string }) {
     const len = messages?.messages?.length ?? 0
     if (len > 0 && len > lastMessageCountRef.current) {
       const el = scrollContainerRef.current
-      if (el) {
-        const near = el.scrollHeight - el.scrollTop - el.clientHeight < 150
-        if (near) { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); setNewMsgCount(0) }
-        else setNewMsgCount((p) => p + (len - lastMessageCountRef.current))
-      } else {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-      }
+      queueMicrotask(() => {
+        if (el) {
+          const near = el.scrollHeight - el.scrollTop - el.clientHeight < 150
+          if (near) { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); setNewMsgCount(0) }
+          else setNewMsgCount((p) => p + (len - lastMessageCountRef.current))
+        } else {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+        }
+      })
     }
     lastMessageCountRef.current = len
   }, [messages?.messages?.length])
@@ -193,7 +189,30 @@ export function useChatMessages({ type, id }: { type: ChatType; id: string }) {
     onError: () => toast("Failed to pin message", "error"),
   })
 
+  const { mutate: reactToMessage } = useMutation({
+    mutationFn: async ({ messageId, emoji, action }: { messageId: string; emoji: string; action: "add" | "remove" }) => {
+      switch (type) {
+        case "room":
+          await client.messages.react.post({ messageId, emoji, action }, { query: { roomId: id } })
+          break
+        case "channel":
+          await client["channel-messages"].react.post({ messageId, emoji, action }, { query: { channelId: id } })
+          break
+        case "group":
+          await client["group-messages"].react.post({ messageId, emoji, action }, { query: { groupId: id } })
+          break
+      }
+    },
+    onError: () => {
+      refetch()
+      toast("Failed to update reaction", "error")
+    },
+  })
+
   const handleReact = useCallback((messageId: string, emoji: string) => {
+    const hasReacted = reactions[messageId]?.[emoji]?.hasReacted || false
+    const action = hasReacted ? "remove" : "add"
+
     setReactions((prev) => {
       const mr = { ...prev[messageId] }
       const cur = mr[emoji] || { count: 0, hasReacted: false }
@@ -202,7 +221,9 @@ export function useChatMessages({ type, id }: { type: ChatType; id: string }) {
         : { count: cur.count + 1, hasReacted: true }
       return { ...prev, [messageId]: mr }
     })
-  }, [])
+
+    reactToMessage({ messageId, emoji, action })
+  }, [reactions, reactToMessage])
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })

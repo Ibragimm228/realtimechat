@@ -1,3 +1,4 @@
+import Image from "next/image"
 import { decryptMessage } from "@/lib/crypto"
 import { decryptFile, isImageType, isAudioType, formatFileSize, type FileMetadata } from "@/lib/file-crypto"
 import { parseMarkdown } from "@/lib/markdown"
@@ -40,7 +41,6 @@ export const EncryptedMessage = ({
 }) => {
   const [isWhisper, setIsWhisper] = useState(false)
   const [whisperRevealed, setWhisperRevealed] = useState(false)
-  const [whisperExpired, setWhisperExpired] = useState(false)
   const [whisperCountdown, setWhisperCountdown] = useState(WHISPER_VIEW_SECONDS)
   const [isBurn, setIsBurn] = useState(false)
   const [isCode, setIsCode] = useState(false)
@@ -54,9 +54,15 @@ export const EncryptedMessage = ({
   const [isRevealed, setIsRevealed] = useState(false)
   const [replyData, setReplyData] = useState<ReplyData | null>(null)
   const onBurnRef = useRef(onBurn)
-  onBurnRef.current = onBurn
   const onDecryptedRef = useRef(onDecrypted)
-  onDecryptedRef.current = onDecrypted
+
+  useEffect(() => {
+    onBurnRef.current = onBurn
+  }, [onBurn])
+
+  useEffect(() => {
+    onDecryptedRef.current = onDecrypted
+  }, [onDecrypted])
 
   useEffect(() => {
     if (!content || isRevealed) return
@@ -160,20 +166,14 @@ export const EncryptedMessage = ({
   }, [text, encryptionKey, burnAfter, messageTimestamp])
 
   useEffect(() => {
-    if (!whisperRevealed || whisperExpired) return
-
-    if (whisperCountdown <= 0) {
-      setWhisperExpired(true)
-      setContent("")
-      return
-    }
+    if (!whisperRevealed || whisperCountdown <= 0) return
 
     const timer = setTimeout(() => {
       setWhisperCountdown(prev => prev - 1)
     }, 1000)
 
     return () => clearTimeout(timer)
-  }, [whisperRevealed, whisperExpired, whisperCountdown])
+  }, [whisperRevealed, whisperCountdown])
 
   const replyBlock = replyData && (
     <div className="mb-2 pl-2 border-l-2 border-primary/40 opacity-70">
@@ -182,7 +182,7 @@ export const EncryptedMessage = ({
     </div>
   )
 
-  if (whisperExpired) {
+  if (whisperRevealed && whisperCountdown <= 0) {
     return (
       <span className="text-[10px] text-muted-foreground/50 italic select-none">
         [Whisper expired — content removed]
@@ -230,7 +230,7 @@ export const EncryptedMessage = ({
         {replyBlock}
         <div className="space-y-1">
           {isImageType(fileMeta.type) ? (
-            <img src={fileUrl} alt={fileMeta.name} className="max-w-[300px] max-h-[300px] rounded-lg object-cover cursor-pointer" onClick={() => window.open(fileUrl, "_blank")} />
+            <Image src={fileUrl} alt={fileMeta.name} width={300} height={300} unoptimized className="max-w-[300px] max-h-[300px] rounded-lg object-cover cursor-pointer" onClick={() => window.open(fileUrl, "_blank")} />
           ) : isAudioType(fileMeta.type) ? (
             <div className="flex items-center gap-3 p-2 bg-black/10 rounded-lg min-w-[200px]">
               <audio src={fileUrl} controls className="w-full h-8 [&::-webkit-media-controls-panel]:bg-transparent" />

@@ -50,6 +50,13 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request).catch(() => caches.match(OFFLINE_URL))
+    )
+    return
+  }
+
   event.respondWith(
     fetch(request)
       .then((res) => {
@@ -77,11 +84,20 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close()
-  const url = event.notification.data?.url || "/"
+  let url = "/"
+
+  try {
+    const target = new URL(event.notification.data?.url || "/", self.location.origin)
+    if (target.origin === self.location.origin) {
+      url = `${target.pathname}${target.search}${target.hash}`
+    }
+  } catch {}
+
   event.waitUntil(
     self.clients.matchAll({ type: "window" }).then((clients) => {
+      const fullUrl = new URL(url, self.location.origin).href
       for (const c of clients) {
-        if (c.url.includes(url) && "focus" in c) return c.focus()
+        if (c.url === fullUrl && "focus" in c) return c.focus()
       }
       return self.clients.openWindow(url)
     })

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const fs = require('fs');
 const path = require('path');
 
@@ -48,7 +49,7 @@ files.forEach(file => {
 
     themes[name] = {
       light: lightVars,
-      dark: Object.keys(darkVars).length > 0 ? darkVars : lightVars // Fallback to light if no dark
+      dark: Object.keys(darkVars).length > 0 ? darkVars : lightVars,
     };
   }
 });

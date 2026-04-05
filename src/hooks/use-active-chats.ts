@@ -11,7 +11,6 @@ export type ActiveChat = {
 }
 
 const STORAGE_KEY = "active_chats"
-
 let listeners: Array<() => void> = []
 
 function emitChange() {
@@ -21,7 +20,7 @@ function emitChange() {
 function getChats(): ActiveChat[] {
   if (typeof window === "undefined") return []
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = sessionStorage.getItem(STORAGE_KEY)
     return raw ? JSON.parse(raw) : []
   } catch {
     return []
@@ -29,23 +28,21 @@ function getChats(): ActiveChat[] {
 }
 
 function saveChats(chats: ActiveChat[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(chats))
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(chats))
   emitChange()
 }
 
 const getSnapshot = () => {
   if (typeof window === "undefined") return "[]"
-  return localStorage.getItem(STORAGE_KEY) || "[]"
+  return sessionStorage.getItem(STORAGE_KEY) || "[]"
 }
 
 const getServerSnapshot = () => "[]"
 
 const subscribe = (callback: () => void) => {
   listeners.push(callback)
-  window.addEventListener("storage", callback)
   return () => {
     listeners = listeners.filter((l) => l !== callback)
-    window.removeEventListener("storage", callback)
   }
 }
 

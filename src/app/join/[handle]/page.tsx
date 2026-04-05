@@ -4,6 +4,7 @@ import { generateKey } from "@/lib/crypto"
 import { client } from "@/lib/client"
 import { ThemeSelector } from "@/components/theme-selector"
 import { useQuery } from "@tanstack/react-query"
+import Link from "next/link"
 import { useParams } from "next/navigation"
 import { useState } from "react"
 
@@ -12,7 +13,7 @@ const Page = () => {
   const handle = params.handle as string
   const [isJoining, setIsJoining] = useState(false)
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["handle-resolve", handle],
     queryFn: async () => {
       const res = await client.handle.resolve.get({ query: { handle } })
@@ -33,7 +34,6 @@ const Page = () => {
   }
 
   const isGroup = data && "type" in data && data.type === "group"
-  const isChannel = data && "type" in data && data.type === "channel"
   const found = data && !("error" in data)
 
   return (
@@ -68,9 +68,9 @@ const Page = () => {
               <p className="text-muted-foreground text-xs">
                 @{handle} does not exist or has expired.
               </p>
-              <a href="/" className="inline-block text-primary text-xs font-bold hover:underline mt-2">
+              <Link href="/" className="inline-block text-primary text-xs font-bold hover:underline mt-2">
                 Go Home
-              </a>
+              </Link>
             </div>
           )}
 
@@ -133,9 +133,9 @@ const Page = () => {
                 {isJoining ? "Joining..." : `Join ${isGroup ? "Group" : "Channel"}`}
               </button>
 
-              <a href="/" className="block text-center text-xs text-muted-foreground hover:text-foreground transition-colors">
+              <Link href="/" className="block text-center text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Back to Home
-              </a>
+              </Link>
             </div>
           )}
         </div>

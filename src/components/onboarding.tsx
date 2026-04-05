@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 
 const STORAGE_KEY = "onboarding_completed"
 
@@ -36,13 +36,11 @@ const STEPS = [
 ]
 
 export function Onboarding() {
-  const [show, setShow] = useState(false)
+  const [show, setShow] = useState(() => {
+    if (typeof window === "undefined") return false
+    return !localStorage.getItem(STORAGE_KEY)
+  })
   const [step, setStep] = useState(0)
-
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    if (!localStorage.getItem(STORAGE_KEY)) setShow(true)
-  }, [])
 
   const complete = () => {
     localStorage.setItem(STORAGE_KEY, "true")

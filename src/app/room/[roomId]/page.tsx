@@ -20,7 +20,6 @@ import { VoiceRecorder } from "@/components/voice-recorder"
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts"
 import { MessageReactions, REACTION_EMOJIS } from "@/components/message-reactions"
 import { DecoyScreen, DECOY_OPTIONS } from "@/components/decoy-screen"
-import { CanaryBadge } from "@/components/canary-badge"
 import { MessageSearch } from "@/components/message-search"
 import { PinnedMessages } from "@/components/pinned-messages"
 import { UserSettings } from "@/components/user-settings"
@@ -45,15 +44,44 @@ const Page = () => {
   const { addChat } = useActiveChats()
   const { isReady, encryptionKey, keyHash } = useChatEncryption()
 
-  const chat = useChatMessages({ type: "room", id: roomId })
-  const mi = useMessageInput({ type: "room", id: roomId, encryptionKey })
+  const {
+    messages,
+    reactions,
+    pinnedMessages,
+    decryptedTexts,
+    typingUsers,
+    copiedMessageId,
+    messagesEndRef,
+    scrollContainerRef,
+    showScrollBtn,
+    newMsgCount,
+    copyMessage,
+    deleteMessage,
+    handleReact,
+    scrollToBottom,
+    onDecrypted,
+    sendTyping,
+    handleTyping,
+    pinMessage,
+    refetch,
+  } = useChatMessages({ type: "room", id: roomId })
+  const {
+    input,
+    setInput,
+    inputRef,
+    replyTo,
+    setReplyTo,
+    sendMessage,
+    isPending,
+    sendFile,
+  } = useMessageInput({ type: "room", id: roomId, encryptionKey })
 
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
   const [isPanicMode, setIsPanicMode] = useState(false)
-  const [panicPin, setPanicPin] = useState("")
+  const [panicPin] = useState(() => Math.floor(1000 + Math.random() * 9000).toString())
   const [panicInput, setPanicInput] = useState("")
   const [panicAttempts, setPanicAttempts] = useState(0)
-  const [showPinModal, setShowPinModal] = useState(false)
+  const [showPinModal, setShowPinModal] = useState(true)
   const [showDestroyConfirm, setShowDestroyConfirm] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
   const [decoyType, setDecoyType] = useState<"google" | "calculator" | "notes">("google")
@@ -67,11 +95,6 @@ const Page = () => {
       addChat({ type: "room", id: roomId, name: `Room ${roomId.slice(0, 8)}...`, encryptionKey: keyHash })
     }
   }, [keyHash, roomId, addChat])
-
-  useEffect(() => {
-    setPanicPin(Math.floor(1000 + Math.random() * 9000).toString())
-    setShowPinModal(true)
-  }, [])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -95,8 +118,12 @@ const Page = () => {
       setPanicAttempts(next)
       setPanicInput("")
       if (next >= 2) {
-        destroyRoom()
-        router.push("/?destroyed=true")
+        if (ttlData?.isOwner) {
+          destroyRoom()
+          router.push("/?destroyed=true")
+        } else {
+          router.push("/")
+        }
       }
     }
   }
@@ -106,11 +133,13 @@ const Page = () => {
     queryFn: async () => (await client.room.ttl.get({ query: { roomId } })).data,
   })
 
-  /* eslint-disable react-hooks/set-state-in-effect */
+  const canDestroyRoom = Boolean(ttlData?.isOwner)
+
   useEffect(() => {
-    if (ttlData?.ttl !== undefined) setTimeRemaining(ttlData.ttl)
-  }, [ttlData])
-  /* eslint-enable react-hooks/set-state-in-effect */
+    if (ttlData?.ttl === undefined) return
+    const frame = requestAnimationFrame(() => setTimeRemaining(ttlData.ttl))
+    return () => cancelAnimationFrame(frame)
+  }, [ttlData?.ttl])
 
   useEffect(() => {
     if (timeRemaining === null || timeRemaining < 0) return
@@ -181,23 +210,25 @@ const Page = () => {
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
             <ThemeSelector />
-            <button onClick={() => setShowDestroyConfirm(true)} className="text-[10px] md:text-xs bg-destructive hover:bg-destructive/90 px-2 md:px-3 py-1.5 rounded text-destructive-foreground font-bold transition-all group flex items-center gap-1.5 shadow-lg shadow-destructive/20">
-              <span className="hidden md:inline group-hover:animate-pulse">DESTROY</span>
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="md:hidden"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-            </button>
+            {canDestroyRoom && (
+              <button onClick={() => setShowDestroyConfirm(true)} className="text-[10px] md:text-xs bg-destructive hover:bg-destructive/90 px-2 md:px-3 py-1.5 rounded text-destructive-foreground font-bold transition-all group flex items-center gap-1.5 shadow-lg shadow-destructive/20">
+                <span className="hidden md:inline group-hover:animate-pulse">DESTROY</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="md:hidden"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              </button>
+            )}
           </div>
         </header>
 
         <PinnedMessages
-          messages={chat.pinnedMessages}
-          decryptedTexts={chat.decryptedTexts}
+          messages={pinnedMessages}
+          decryptedTexts={decryptedTexts}
           onScrollTo={(id) => { setHighlightedMsg(id); document.getElementById(`msg-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }); setTimeout(() => setHighlightedMsg(null), 2000) }}
-          onUnpin={(id) => chat.pinMessage({ messageId: id, action: "unpin" })}
+          onUnpin={(id) => pinMessage({ messageId: id, action: "unpin" })}
         />
-        <MessageSearch decryptedTexts={chat.decryptedTexts} onHighlight={setHighlightedMsg} />
-        <div ref={chat.scrollContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-6">
-          {chat.messages?.messages.length === 0 && <EmptyState type="room" />}
-          {chat.messages?.messages.map((msg, index) => (
+        <MessageSearch decryptedTexts={decryptedTexts} onHighlight={setHighlightedMsg} />
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-6">
+          {messages?.messages.length === 0 && <EmptyState type="room" />}
+          {messages?.messages.map((msg, index) => (
             <div key={msg.id} id={`msg-${msg.id}`} className={`flex flex-col ${msg.token ? "items-end" : "items-start"} animate-message-in ${highlightedMsg === msg.id ? "ring-2 ring-primary rounded-2xl" : ""}`} style={{ animationDelay: `${Math.min(index * 50, 500)}ms` }}>
               <div className={`max-w-[85%] group ${msg.token ? "items-end" : "items-start"} flex flex-col`}>
                 <div className="flex items-baseline gap-2 mb-1 opacity-70">
@@ -209,51 +240,51 @@ const Page = () => {
                 </div>
                 <div className="relative">
                   <div className={`p-3 rounded-2xl text-sm leading-relaxed break-all shadow-sm transition-transform hover:scale-[1.01] ${msg.token ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-muted text-foreground rounded-tl-sm border border-border"}`}>
-                    <EncryptedMessage text={msg.text} encryptionKey={encryptionKey} onBurn={() => { chat.deleteMessage(msg.id); chat.refetch() }} burnAfter={(msg as any).burnAfter} messageTimestamp={msg.timestamp} onDecrypted={(plaintext) => chat.onDecrypted(msg.id, plaintext)} />
+                    <EncryptedMessage text={msg.text} encryptionKey={encryptionKey} onBurn={() => { deleteMessage(msg.id); refetch() }} burnAfter={(msg as typeof msg & { burnAfter?: number }).burnAfter} messageTimestamp={msg.timestamp} onDecrypted={(plaintext) => onDecrypted(msg.id, plaintext)} />
                   </div>
                   <div className={`absolute top-1/2 -translate-y-1/2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${msg.token ? "-left-10" : "-right-10"}`}>
-                    <button onClick={() => chat.copyMessage(msg.id)} className={`p-1 rounded hover:bg-muted transition-colors ${chat.copiedMessageId === msg.id ? "text-green-500" : "text-muted-foreground"}`} title="Copy decrypted">
-                      {chat.copiedMessageId === msg.id ? (
+                    <button onClick={() => copyMessage(msg.id)} className={`p-1 rounded hover:bg-muted transition-colors ${copiedMessageId === msg.id ? "text-green-500" : "text-muted-foreground"}`} title="Copy decrypted">
+                      {copiedMessageId === msg.id ? (
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                       ) : (
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                       )}
                     </button>
-                    <button onClick={() => { mi.setReplyTo({ id: msg.id, sender: msg.token ? "You" : msg.sender, text: chat.decryptedTexts[msg.id] || "" }); mi.inputRef.current?.focus() }} className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground" title="Reply">
+                    <button onClick={() => { setReplyTo({ id: msg.id, sender: msg.token ? "You" : msg.sender, text: decryptedTexts[msg.id] || "" }); inputRef.current?.focus() }} className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground" title="Reply">
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
                     </button>
-                    <button onClick={() => { const isPinned = chat.pinnedMessages.some((p) => p.id === msg.id); chat.pinMessage({ messageId: msg.id, action: isPinned ? "unpin" : "pin" }) }} className={`p-1 rounded hover:bg-muted transition-colors ${chat.pinnedMessages.some((p) => p.id === msg.id) ? "text-primary" : "text-muted-foreground"}`} title={chat.pinnedMessages.some((p) => p.id === msg.id) ? "Unpin" : "Pin"}>
+                    <button onClick={() => { const isPinned = pinnedMessages.some((p) => p.id === msg.id); pinMessage({ messageId: msg.id, action: isPinned ? "unpin" : "pin" }) }} className={`p-1 rounded hover:bg-muted transition-colors ${pinnedMessages.some((p) => p.id === msg.id) ? "text-primary" : "text-muted-foreground"}`} title={pinnedMessages.some((p) => p.id === msg.id) ? "Unpin" : "Pin"}>
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="17" x2="12" y2="3"/><path d="m5 10 7-7 7 7"/><line x1="4" y1="21" x2="20" y2="21"/></svg>
                     </button>
                   </div>
                 </div>
-                <MessageReactions reactions={REACTION_EMOJIS.map((r) => ({ emoji: r.emoji, count: chat.reactions[msg.id]?.[r.emoji]?.count || 0, hasReacted: chat.reactions[msg.id]?.[r.emoji]?.hasReacted || false }))} onReact={(emoji) => chat.handleReact(msg.id, emoji)} />
+                <MessageReactions reactions={REACTION_EMOJIS.map((r) => ({ emoji: r.emoji, count: reactions[msg.id]?.[r.emoji]?.count || 0, hasReacted: reactions[msg.id]?.[r.emoji]?.hasReacted || false }))} onReact={(emoji) => handleReact(msg.id, emoji)} />
               </div>
             </div>
           ))}
-          <div ref={chat.messagesEndRef} />
+          <div ref={messagesEndRef} />
         </div>
 
-        <ScrollToBottom visible={chat.showScrollBtn} unreadCount={chat.newMsgCount} onClick={chat.scrollToBottom} />
+        <ScrollToBottom visible={showScrollBtn} unreadCount={newMsgCount} onClick={scrollToBottom} />
 
         <div className="p-3 md:p-4 border-t border-border bg-background/80 backdrop-blur-md">
-          {chat.typingUsers.length > 0 && (
+          {typingUsers.length > 0 && (
             <div className="text-[10px] text-muted-foreground mb-2 px-4 font-medium flex items-center gap-2">
               <span className="flex gap-1">
                 <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
                 <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
                 <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
               </span>
-              {chat.typingUsers.join(", ")} {chat.typingUsers.length === 1 ? "is" : "are"} typing...
+              {typingUsers.join(", ")} {typingUsers.length === 1 ? "is" : "are"} typing...
             </div>
           )}
-          {mi.replyTo && (
+          {replyTo && (
             <div className="flex items-center gap-2 mb-2 px-4 py-2 bg-muted/50 rounded-lg border-l-2 border-primary">
               <div className="flex-1 min-w-0">
-                <span className="text-[10px] font-bold text-primary">{mi.replyTo.sender}</span>
-                <p className="text-xs text-muted-foreground truncate">{mi.replyTo.text}</p>
+                <span className="text-[10px] font-bold text-primary">{replyTo.sender}</span>
+                <p className="text-xs text-muted-foreground truncate">{replyTo.text}</p>
               </div>
-              <button onClick={() => mi.setReplyTo(null)} className="p-1 text-muted-foreground hover:text-foreground shrink-0">
+              <button onClick={() => setReplyTo(null)} className="p-1 text-muted-foreground hover:text-foreground shrink-0">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
@@ -261,12 +292,12 @@ const Page = () => {
           <div className="flex flex-col gap-2 max-w-4xl mx-auto w-full">
             <div className="flex gap-2 md:gap-3">
               <div className="flex-1 relative flex items-end gap-1 bg-muted/50 border border-input focus-within:border-ring rounded-lg transition-all px-2">
-                <FileAttach onFile={(f) => mi.sendFile(f)} />
-                <VoiceRecorder onSend={(f) => mi.sendFile(f)} />
-                <EmojiPicker onSelect={(emoji) => mi.setInput((prev) => prev + emoji)} />
-                <textarea ref={mi.inputRef} autoFocus rows={1} value={mi.input} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (mi.input.trim() && !mi.isPending) { mi.sendMessage({ text: mi.input }); chat.sendTyping(false) } } }} placeholder="Message..." onChange={(e) => { mi.setInput(e.target.value); if (e.target.value) chat.handleTyping(); e.target.style.height = "inherit"; e.target.style.height = `${e.target.scrollHeight}px` }} className="flex-1 bg-transparent focus:outline-none transition-all text-foreground placeholder:text-muted-foreground py-3 text-sm resize-none max-h-48 overflow-y-auto block" />
+                <FileAttach onFile={(f) => sendFile(f)} />
+                <VoiceRecorder onSend={(f) => sendFile(f)} />
+                <EmojiPicker onSelect={(emoji) => setInput((prev) => prev + emoji)} />
+                <textarea ref={inputRef} autoFocus rows={1} value={input} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (input.trim() && !isPending) { sendMessage({ text: input }); sendTyping(false) } } }} placeholder="Message..." onChange={(e) => { setInput(e.target.value); if (e.target.value) handleTyping(); e.target.style.height = "inherit"; e.target.style.height = `${e.target.scrollHeight}px` }} className="flex-1 bg-transparent focus:outline-none transition-all text-foreground placeholder:text-muted-foreground py-3 text-sm resize-none max-h-48 overflow-y-auto block" />
               </div>
-              <button onClick={() => { if (mi.input.trim() && !mi.isPending) { mi.sendMessage({ text: mi.input }); chat.sendTyping(false); mi.inputRef.current?.focus() } }} disabled={!mi.input.trim() || mi.isPending || !encryptionKey} className="bg-primary text-primary-foreground px-5 md:px-6 text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer rounded-lg shadow-lg shadow-primary/10 active:scale-95 self-end h-[46px]">
+              <button onClick={() => { if (input.trim() && !isPending) { sendMessage({ text: input }); sendTyping(false); inputRef.current?.focus() } }} disabled={!input.trim() || isPending || !encryptionKey} className="bg-primary text-primary-foreground px-5 md:px-6 text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer rounded-lg shadow-lg shadow-primary/10 active:scale-95 self-end h-[46px]">
                 SEND
               </button>
             </div>
@@ -297,7 +328,14 @@ const Page = () => {
             } else {
               const next = panicAttempts + 1
               setPanicAttempts(next)
-              if (next >= 2) { destroyRoom(); router.push("/?destroyed=true") }
+              if (next >= 2) {
+                if (canDestroyRoom) {
+                  destroyRoom()
+                  router.push("/?destroyed=true")
+                } else {
+                  router.push("/")
+                }
+              }
             }
           }}
         />
@@ -320,7 +358,7 @@ const Page = () => {
               <input autoFocus type="password" maxLength={4} value={panicInput} onChange={(e) => setPanicInput(e.target.value.replace(/\D/g, ""))} onKeyDown={(e) => e.key === "Enter" && handlePanicUnlock()} placeholder="****" className="w-full bg-muted text-center text-3xl tracking-[1em] font-black py-4 rounded-2xl border-2 border-transparent focus:border-primary/50 outline-none transition-all" />
               <button className="w-full py-4 bg-primary text-primary-foreground font-black rounded-2xl hover:opacity-90 transition-all shadow-xl shadow-primary/20 active:scale-[0.98]" onClick={handlePanicUnlock}>UNLOCK SESSION</button>
             </div>
-            <p className="text-[10px] text-muted-foreground/30 uppercase tracking-[0.2em] font-bold">Wrong code twice = Room Self-Destruct</p>
+            <p className="text-[10px] text-muted-foreground/30 uppercase tracking-[0.2em] font-bold">{canDestroyRoom ? "Wrong code twice = Room Self-Destruct" : "Wrong code twice = Leave Room"}</p>
           </div>
         </div>
       )}
@@ -336,7 +374,7 @@ const Page = () => {
               <p className="text-xs text-muted-foreground mt-1">Memorize this. It unlocks Panic Mode.</p>
             </div>
             <div className="text-4xl font-black tracking-[0.5em] text-primary py-2">{panicPin}</div>
-            <p className="text-[10px] text-muted-foreground/60">2 wrong attempts = room destroyed</p>
+            <p className="text-[10px] text-muted-foreground/60">{canDestroyRoom ? "2 wrong attempts = room destroyed" : "2 wrong attempts = leave room"}</p>
             <div className="w-full space-y-1.5 text-left">
               <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Panic Screen</label>
               <div className="flex gap-1.5">
@@ -351,7 +389,9 @@ const Page = () => {
         </div>
       )}
 
-      <ConfirmDialog open={showDestroyConfirm} title="Destroy Room?" description="This will permanently delete all messages and the room itself. This action cannot be undone." confirmText="DESTROY" variant="danger" onConfirm={() => { setShowDestroyConfirm(false); destroyRoom() }} onCancel={() => setShowDestroyConfirm(false)} />
+      {canDestroyRoom && (
+        <ConfirmDialog open={showDestroyConfirm} title="Destroy Room?" description="This will permanently delete all messages and the room itself. This action cannot be undone." confirmText="DESTROY" variant="danger" onConfirm={() => { setShowDestroyConfirm(false); destroyRoom() }} onCancel={() => setShowDestroyConfirm(false)} />
+      )}
       <ShareModal open={showShareModal} url={typeof window !== "undefined" ? window.location.href : ""} title="Share Room" onClose={() => setShowShareModal(false)} />
       <UserSettings open={showSettings} onClose={() => setShowSettings(false)} />
     </>

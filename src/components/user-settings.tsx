@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { DECOY_OPTIONS } from "./decoy-screen"
 
 const FONT_SIZES = [
@@ -28,17 +28,9 @@ function setSetting(key: string, value: unknown) {
 }
 
 export function UserSettings({ open, onClose }: UserSettingsProps) {
-  const [fontSize, setFontSize] = useState("base")
-  const [decoyType, setDecoyType] = useState("google")
-  const [soundEnabled, setSoundEnabled] = useState(true)
-  const [linkPreview, setLinkPreview] = useState(true)
-
-  useEffect(() => {
-    setFontSize(getSetting("fontSize", "base"))
-    setDecoyType(getSetting("decoyType", "google"))
-    setSoundEnabled(getSetting("sound", true))
-    setLinkPreview(getSetting("linkPreview", true))
-  }, [open])
+  const [fontSize, setFontSize] = useState(() => getSetting("fontSize", "base"))
+  const [decoyType, setDecoyType] = useState(() => getSetting("decoyType", "google"))
+  const [soundEnabled, setSoundEnabled] = useState(() => getSetting("sound", true))
 
   if (!open) return null
 
@@ -78,13 +70,6 @@ export function UserSettings({ open, onClose }: UserSettingsProps) {
             <label className="text-xs font-bold uppercase text-muted-foreground tracking-wider">Sound Notifications</label>
             <button onClick={() => { const v = !soundEnabled; setSoundEnabled(v); setSetting("sound", v) }} className={`w-10 h-6 rounded-full transition-all ${soundEnabled ? "bg-primary" : "bg-muted"}`}>
               <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform mx-1 ${soundEnabled ? "translate-x-4" : ""}`} />
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-bold uppercase text-muted-foreground tracking-wider">Link Previews</label>
-            <button onClick={() => { const v = !linkPreview; setLinkPreview(v); setSetting("linkPreview", v) }} className={`w-10 h-6 rounded-full transition-all ${linkPreview ? "bg-primary" : "bg-muted"}`}>
-              <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform mx-1 ${linkPreview ? "translate-x-4" : ""}`} />
             </button>
           </div>
 

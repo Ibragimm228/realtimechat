@@ -1,51 +1,35 @@
 import { NextRequest, NextResponse } from "next/server"
 import { redis } from "./lib/redis"
 import { nanoid } from "nanoid"
+import {
+  AUTH_COOKIE_MAX_AGE_SECONDS,
+  AUTH_COOKIE_NAME,
+  admitMember,
+  getClientIp,
+  getMetaKey,
+} from "@/lib/membership"
 
 const ID_REGEX = /^[a-zA-Z0-9_-]{10,64}$/
 const MW_RATE_LIMIT_WINDOW = 60
 const MW_RATE_LIMIT_MAX = 30
 
-const ADD_USER_SCRIPT = `
-local key = KEYS[1]
-local token = ARGV[1]
-local capacity = tonumber(ARGV[2])
-
-local raw = redis.call('HGET', key, 'connected')
-if not raw then 
-  return 'room-not-found'
-end
-
-local connected = cjson.decode(raw)
-
-for i, t in ipairs(connected) do
-  if t == token then 
-    return 'already-connected'
-  end
-end
-
-if #connected >= capacity then 
-  return 'room-full'
-end
-
-table.insert(connected, token)
-redis.call('HSET', key, 'connected', cjson.encode(connected))
-return 'success'
-`
-
-function ensureToken(req: NextRequest): { token: string; response?: NextResponse } {
-  const existingToken = req.cookies.get("x-auth-token")?.value
-  if (existingToken) return { token: existingToken }
-
-  const newToken = nanoid()
-  const response = NextResponse.redirect(req.url)
-  response.cookies.set("x-auth-token", newToken, {
+function setAuthCookie(response: NextResponse, token: string) {
+  response.cookies.set(AUTH_COOKIE_NAME, token, {
     path: "/",
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    maxAge: 86400,
+    maxAge: AUTH_COOKIE_MAX_AGE_SECONDS,
   })
+}
+
+function ensureToken(req: NextRequest): { token: string; response?: NextResponse } {
+  const existingToken = req.cookies.get(AUTH_COOKIE_NAME)?.value
+  if (existingToken) return { token: existingToken }
+
+  const newToken = nanoid()
+  const response = NextResponse.redirect(req.url)
+  setAuthCookie(response, newToken)
   return { token: newToken, response }
 }
 
@@ -58,24 +42,22 @@ async function handleRoom(req: NextRequest, roomId: string) {
   if (response) return response
 
   const meta = await redis.hgetall(
-    `meta:${roomId}`
+    getMetaKey("room", roomId)
   ) as { connected: string | string[]; createdAt: number; capacity?: number } | null
 
   if (!meta) {
     return NextResponse.redirect(new URL("/?error=room-not-found", req.url))
   }
 
-  const capacity = meta.capacity || 2
+  const capacity = Number(meta.capacity) || 2
 
   try {
-    const result = await redis.eval(
-      ADD_USER_SCRIPT,
-      [`meta:${roomId}`],
-      [token, capacity.toString()]
-    ) as string
+    const result = await admitMember("room", roomId, token, capacity)
 
     if (result === 'already-connected' || result === 'success') {
-      return NextResponse.next()
+      const next = NextResponse.next()
+      setAuthCookie(next, token)
+      return next
     }
 
     if (result === 'room-full') {
@@ -102,7 +84,7 @@ async function handleChannel(req: NextRequest, channelId: string) {
   if (response) return response
 
   const meta = await redis.hgetall(
-    `meta:channel:${channelId}`
+    getMetaKey("channel", channelId)
   ) as { connected: string | string[]; capacity?: number } | null
 
   if (!meta) {
@@ -112,14 +94,12 @@ async function handleChannel(req: NextRequest, channelId: string) {
   const capacity = Number(meta.capacity) || 1000
 
   try {
-    const result = await redis.eval(
-      ADD_USER_SCRIPT,
-      [`meta:channel:${channelId}`],
-      [token, capacity.toString()]
-    ) as string
+    const result = await admitMember("channel", channelId, token, capacity)
 
     if (result === 'already-connected' || result === 'success') {
-      return NextResponse.next()
+      const next = NextResponse.next()
+      setAuthCookie(next, token)
+      return next
     }
 
     if (result === 'room-full') {
@@ -146,7 +126,7 @@ async function handleGroup(req: NextRequest, groupId: string) {
   if (response) return response
 
   const meta = await redis.hgetall(
-    `meta:group:${groupId}`
+    getMetaKey("group", groupId)
   ) as { connected: string | string[]; capacity?: number } | null
 
   if (!meta) {
@@ -156,14 +136,12 @@ async function handleGroup(req: NextRequest, groupId: string) {
   const capacity = Number(meta.capacity) || 500
 
   try {
-    const result = await redis.eval(
-      ADD_USER_SCRIPT,
-      [`meta:group:${groupId}`],
-      [token, capacity.toString()]
-    ) as string
+    const result = await admitMember("group", groupId, token, capacity)
 
     if (result === 'already-connected' || result === 'success') {
-      return NextResponse.next()
+      const next = NextResponse.next()
+      setAuthCookie(next, token)
+      return next
     }
 
     if (result === 'room-full') {
@@ -183,7 +161,8 @@ async function handleGroup(req: NextRequest, groupId: string) {
 
 async function hashIp(ip: string): Promise<string> {
   const encoder = new TextEncoder()
-  const data = encoder.encode(ip + (process.env.IP_SALT || "private-chat-salt"))
+  const salt = process.env.IP_SALT || process.env.UPSTASH_REDIS_REST_TOKEN || "private-chat-salt"
+  const data = encoder.encode(ip + salt)
   const hash = await crypto.subtle.digest("SHA-256", data)
   return Array.from(new Uint8Array(hash).slice(0, 8))
     .map((b) => b.toString(16).padStart(2, "0"))
@@ -205,8 +184,16 @@ export const middleware = async (req: NextRequest) => {
     return new NextResponse(null, { status: 403 })
   }
 
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "127.0.0.1"
-  const allowed = await checkRateLimit(ip)
+  const ip = getClientIp(req.headers)
+  let allowed = false
+
+  try {
+    allowed = await checkRateLimit(ip)
+  } catch (error) {
+    console.error("Middleware rate limit failed:", error)
+    return new NextResponse("Service Unavailable", { status: 503 })
+  }
+
   if (!allowed) {
     return new NextResponse("Too Many Requests", { status: 429 })
   }
@@ -240,6 +227,9 @@ function stripHeaders(response: NextResponse): NextResponse {
   response.headers.set("X-Content-Type-Options", "nosniff")
   response.headers.set("X-Frame-Options", "DENY")
   response.headers.set("Referrer-Policy", "no-referrer")
+  response.headers.set("Permissions-Policy", "camera=(), geolocation=(), microphone=(self), payment=()")
+  response.headers.set("Cross-Origin-Opener-Policy", "same-origin")
+  response.headers.set("Cross-Origin-Resource-Policy", "same-origin")
   return response
 }
 

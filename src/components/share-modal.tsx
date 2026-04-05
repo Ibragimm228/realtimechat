@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import Image from "next/image"
+import { useEffect, useMemo, useState } from "react"
 import { generateQRDataURL } from "@/lib/qr"
 import { useToast } from "./toast"
 
@@ -12,18 +13,15 @@ interface ShareModalProps {
 }
 
 export function ShareModal({ open, url, title = "Share Link", onClose }: ShareModalProps) {
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const { toast } = useToast()
 
-  useEffect(() => {
-    if (open && url) {
-      try {
-        const dataUrl = generateQRDataURL(url, 280)
-        setQrDataUrl(dataUrl)
-      } catch {
-        setQrDataUrl(null)
-      }
+  const qrDataUrl = useMemo(() => {
+    if (!open || !url) return null
+    try {
+      return generateQRDataURL(url, 280)
+    } catch {
+      return null
     }
   }, [open, url])
 
@@ -70,7 +68,7 @@ export function ShareModal({ open, url, title = "Share Link", onClose }: ShareMo
         <div className="p-6 flex flex-col items-center gap-5">
           {qrDataUrl ? (
             <div className="bg-white p-3 rounded-xl shadow-inner">
-              <img src={qrDataUrl} alt="QR Code" className="w-[256px] h-[256px]" draggable={false} />
+              <Image src={qrDataUrl} alt="QR Code" width={256} height={256} unoptimized className="w-[256px] h-[256px]" draggable={false} />
             </div>
           ) : (
             <div className="w-[256px] h-[256px] bg-muted rounded-xl flex items-center justify-center">
