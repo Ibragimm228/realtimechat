@@ -1,4 +1,5 @@
 import { redis } from "@/lib/redis"
+import { MAX_TRANSPORT_MESSAGE_LENGTH } from "@/lib/message-limits"
 import { Elysia, t } from "elysia"
 import { nanoid } from "nanoid"
 import { authMiddleware, AuthError } from "./auth"
@@ -18,6 +19,12 @@ const ratelimit = new Ratelimit({
   redis,
   limiter: Ratelimit.slidingWindow(10, "10 s"),
   prefix: "@upstash/ratelimit",
+})
+
+const supportRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(3, "15 m"),
+  prefix: "@upstash/ratelimit/support",
 })
 
 const MAX_TTL = 86400
@@ -109,7 +116,7 @@ const rateLimitMiddleware = new Elysia({ name: "ratelimit" })
 const rooms = new Elysia({ prefix: "/room" })
   .use(rateLimitMiddleware)
   .post("/create", async ({ body, cookie }) => {
-    const { ttl = 600, capacity = 2 } = body
+    const { ttl = 600, capacity = 2, accessProof } = body
     const roomId = nanoid()
     let ownerToken = cookie[AUTH_COOKIE_NAME]?.value as string | undefined
 
@@ -129,6 +136,7 @@ const rooms = new Elysia({ prefix: "/room" })
       connected: JSON.stringify([ownerToken]),
       capacity,
       createdAt: Date.now(),
+      accessProof,
       ownerToken,
     })
 
@@ -148,6 +156,59 @@ const rooms = new Elysia({ prefix: "/room" })
         maximum: MAX_CAPACITY,
         default: 2
       })),
+      accessProof: t.String({ minLength: 32, maxLength: 128 }),
+    })
+  })
+  .post("/access", async ({ body, cookie, set }) => {
+    const { roomId, accessProof } = body
+    const meta = await redis.hgetall(getMetaKey("room", roomId)) as Record<string, unknown> | null
+
+    if (!meta) {
+      set.status = 404
+      throw new Error("Room not found")
+    }
+
+    if (typeof meta.accessProof !== "string" || meta.accessProof !== accessProof) {
+      set.status = 403
+      throw new Error("Invite code required")
+    }
+
+    let token = cookie[AUTH_COOKIE_NAME]?.value as string | undefined
+    if (!token) {
+      token = nanoid()
+      cookie[AUTH_COOKIE_NAME].set({
+        value: token,
+        path: "/",
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: AUTH_COOKIE_MAX_AGE_SECONDS,
+      })
+    }
+
+    const capacity = Number(meta.capacity) || 2
+    const joinResult = await admitMember("room", roomId, token, capacity)
+
+    if (joinResult === "room-full") {
+      set.status = 409
+      throw new Error("Room is full")
+    }
+
+    if (joinResult === "room-not-found") {
+      set.status = 404
+      throw new Error("Room not found")
+    }
+
+    if (joinResult !== "success" && joinResult !== "already-connected") {
+      set.status = 500
+      throw new Error("Unable to join room")
+    }
+
+    return { ok: true }
+  }, {
+    body: t.Object({
+      roomId: t.String({ minLength: 1, maxLength: 64 }),
+      accessProof: t.String({ minLength: 32, maxLength: 128 }),
     })
   })
   .use(authMiddleware)
@@ -264,7 +325,7 @@ const messages = new Elysia({ prefix: "/messages" })
       }),
       body: t.Object({
         sender: t.String({ maxLength: 100 }),
-        text: t.String({ maxLength: 5000 }),
+        text: t.String({ maxLength: MAX_TRANSPORT_MESSAGE_LENGTH }),
         burnAfter: t.Optional(t.Number({ minimum: 1, maximum: 300 })),
       }),
     }
@@ -280,7 +341,6 @@ const messages = new Elysia({ prefix: "/messages" })
 
       await realtime.channel(roomId).emit("chat.typing", {
         roomId,
-        token,
         username: finalUsername,
         isTyping,
         timestamp: Date.now(),
@@ -473,7 +533,7 @@ const messages = new Elysia({ prefix: "/messages" })
       if (remaining > 0) await redis.expire(key, remaining)
 
       await realtime.channel(auth.roomId).emit("chat.react", {
-        messageId, emoji, token: auth.token, action,
+        messageId, emoji, action,
         roomId: auth.roomId, timestamp: Date.now(),
       })
     },
@@ -531,7 +591,7 @@ const MAX_CHANNEL_MESSAGES = 500
 const channels = new Elysia({ prefix: "/channel" })
   .use(rateLimitMiddleware)
   .post("/create", async ({ body, cookie }) => {
-    const { name, ttl, description, handle } = body
+    const { name, ttl, description, handle, accessProof } = body
     const channelId = nanoid()
 
     let ownerToken = cookie[AUTH_COOKIE_NAME]?.value as string | undefined
@@ -563,6 +623,7 @@ const channels = new Elysia({ prefix: "/channel" })
       handle: handle ? handle.toLowerCase() : "",
       capacity: MAX_CHANNEL_CAPACITY,
       createdAt: Date.now(),
+      accessProof,
       ownerToken,
     }
 
@@ -581,6 +642,59 @@ const channels = new Elysia({ prefix: "/channel" })
       description: t.Optional(t.String({ maxLength: 256 })),
       handle: t.Optional(t.String({ minLength: 3, maxLength: 30 })),
       ttl: t.Optional(t.Number({ minimum: 0, maximum: 604800 })),
+      accessProof: t.String({ minLength: 32, maxLength: 128 }),
+    })
+  })
+  .post("/access", async ({ body, cookie, set }) => {
+    const { channelId, accessProof } = body
+    const meta = await redis.hgetall(getMetaKey("channel", channelId)) as Record<string, unknown> | null
+
+    if (!meta) {
+      set.status = 404
+      throw new Error("Channel not found")
+    }
+
+    if (typeof meta.accessProof !== "string" || meta.accessProof !== accessProof) {
+      set.status = 403
+      throw new Error("Invite code required")
+    }
+
+    let token = cookie[AUTH_COOKIE_NAME]?.value as string | undefined
+    if (!token) {
+      token = nanoid()
+      cookie[AUTH_COOKIE_NAME].set({
+        value: token,
+        path: "/",
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: AUTH_COOKIE_MAX_AGE_SECONDS,
+      })
+    }
+
+    const capacity = Number(meta.capacity) || MAX_CHANNEL_CAPACITY
+    const joinResult = await admitMember("channel", channelId, token, capacity)
+
+    if (joinResult === "room-full") {
+      set.status = 409
+      throw new Error("Channel is full")
+    }
+
+    if (joinResult === "room-not-found") {
+      set.status = 404
+      throw new Error("Channel not found")
+    }
+
+    if (joinResult !== "success" && joinResult !== "already-connected") {
+      set.status = 500
+      throw new Error("Unable to join channel")
+    }
+
+    return { ok: true }
+  }, {
+    body: t.Object({
+      channelId: t.String({ minLength: 1, maxLength: 64 }),
+      accessProof: t.String({ minLength: 32, maxLength: 128 }),
     })
   })
   .use(channelCookieMiddleware)
@@ -590,17 +704,10 @@ const channels = new Elysia({ prefix: "/channel" })
       const meta = await redis.hgetall(getMetaKey("channel", channelAuth.channelId)) as Record<string, unknown> | null
       if (!meta) return { error: "Channel not found" }
 
-      const capacity = Number(meta.capacity) || MAX_CHANNEL_CAPACITY
-      const joinResult = await admitMember("channel", channelAuth.channelId, channelAuth.token, capacity)
-      if (joinResult === "room-full") {
-        set.status = 403
-        throw new Error("Channel is full")
-      }
-
       const connected = await requireActiveMember("channel", channelAuth.channelId, channelAuth.token)
       if (!connected) {
-        set.status = 401
-        throw new Error("Unable to join channel")
+        set.status = 403
+        throw new Error("Invite code required")
       }
 
       const ttl = await redis.ttl(getMetaKey("channel", channelAuth.channelId))
@@ -726,7 +833,7 @@ const channelMessages = new Elysia({ prefix: "/channel-messages" })
       query: t.Object({ channelId: t.String({ maxLength: 64 }) }),
       body: t.Object({
         sender: t.String({ maxLength: 100 }),
-        text: t.String({ maxLength: 5000 }),
+        text: t.String({ maxLength: MAX_TRANSPORT_MESSAGE_LENGTH }),
         burnAfter: t.Optional(t.Number({ minimum: 1, maximum: 300 })),
       }),
     }
@@ -747,7 +854,6 @@ const channelMessages = new Elysia({ prefix: "/channel-messages" })
 
       await realtime.channel(`ch:${channelId}`).emit("channel.typing", {
         roomId: channelId,
-        token,
         username: finalUsername,
         isTyping,
         timestamp: Date.now(),
@@ -823,7 +929,6 @@ const channelMessages = new Elysia({ prefix: "/channel-messages" })
       await realtime.channel(`ch:${channelAuth.channelId}`).emit("channel.react", {
         messageId,
         emoji,
-        token: channelAuth.token,
         action,
         roomId: channelAuth.channelId,
         timestamp: Date.now(),
@@ -935,7 +1040,7 @@ const groupMemberMiddleware = new Elysia({ name: "group-member-auth" })
 const groups = new Elysia({ prefix: "/group" })
   .use(rateLimitMiddleware)
   .post("/create", async ({ body, cookie }) => {
-    const { name, description, handle, ttl, capacity = 500 } = body
+    const { name, description, handle, ttl, capacity = 500, accessProof } = body
     const groupId = nanoid()
 
     let ownerToken = cookie[AUTH_COOKIE_NAME]?.value as string | undefined
@@ -969,6 +1074,7 @@ const groups = new Elysia({ prefix: "/group" })
       handle: handle ? handle.toLowerCase() : "",
       capacity: Math.min(capacity, MAX_GROUP_CAPACITY),
       createdAt: Date.now(),
+      accessProof,
       ownerToken,
     }
 
@@ -988,6 +1094,59 @@ const groups = new Elysia({ prefix: "/group" })
       handle: t.Optional(t.String({ minLength: 3, maxLength: 30 })),
       ttl: t.Optional(t.Number({ minimum: 0, maximum: 604800 })),
       capacity: t.Optional(t.Number({ minimum: 2, maximum: 500 })),
+      accessProof: t.String({ minLength: 32, maxLength: 128 }),
+    })
+  })
+  .post("/access", async ({ body, cookie, set }) => {
+    const { groupId, accessProof } = body
+    const meta = await redis.hgetall(getMetaKey("group", groupId)) as Record<string, unknown> | null
+
+    if (!meta) {
+      set.status = 404
+      throw new Error("Group not found")
+    }
+
+    if (typeof meta.accessProof !== "string" || meta.accessProof !== accessProof) {
+      set.status = 403
+      throw new Error("Invite code required")
+    }
+
+    let token = cookie[AUTH_COOKIE_NAME]?.value as string | undefined
+    if (!token) {
+      token = nanoid()
+      cookie[AUTH_COOKIE_NAME].set({
+        value: token,
+        path: "/",
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: AUTH_COOKIE_MAX_AGE_SECONDS,
+      })
+    }
+
+    const capacity = Number(meta.capacity) || MAX_GROUP_CAPACITY
+    const joinResult = await admitMember("group", groupId, token, capacity)
+
+    if (joinResult === "room-full") {
+      set.status = 409
+      throw new Error("Group is full")
+    }
+
+    if (joinResult === "room-not-found") {
+      set.status = 404
+      throw new Error("Group not found")
+    }
+
+    if (joinResult !== "success" && joinResult !== "already-connected") {
+      set.status = 500
+      throw new Error("Unable to join group")
+    }
+
+    return { ok: true }
+  }, {
+    body: t.Object({
+      groupId: t.String({ minLength: 1, maxLength: 64 }),
+      accessProof: t.String({ minLength: 32, maxLength: 128 }),
     })
   })
   .use(groupCookieMiddleware)
@@ -997,17 +1156,10 @@ const groups = new Elysia({ prefix: "/group" })
       const meta = await redis.hgetall(getMetaKey("group", groupAuth.groupId)) as Record<string, unknown> | null
       if (!meta) return { error: "Group not found" }
 
-      const capacity = Number(meta.capacity) || MAX_GROUP_CAPACITY
-      const joinResult = await admitMember("group", groupAuth.groupId, groupAuth.token, capacity)
-      if (joinResult === "room-full") {
-        set.status = 403
-        throw new Error("Group is full")
-      }
-
       const connected = await requireActiveMember("group", groupAuth.groupId, groupAuth.token)
       if (!connected) {
-        set.status = 401
-        throw new Error("Unable to join group")
+        set.status = 403
+        throw new Error("Invite code required")
       }
 
       const ttl = await redis.ttl(getMetaKey("group", groupAuth.groupId))
@@ -1133,7 +1285,7 @@ const groupMessages = new Elysia({ prefix: "/group-messages" })
       query: t.Object({ groupId: t.String({ maxLength: 64 }) }),
       body: t.Object({
         sender: t.String({ maxLength: 100 }),
-        text: t.String({ maxLength: 5000 }),
+        text: t.String({ maxLength: MAX_TRANSPORT_MESSAGE_LENGTH }),
         burnAfter: t.Optional(t.Number({ minimum: 1, maximum: 300 })),
       }),
     }
@@ -1149,7 +1301,6 @@ const groupMessages = new Elysia({ prefix: "/group-messages" })
 
       await realtime.channel(`grp:${groupId}`).emit("group.typing", {
         roomId: groupId,
-        token,
         username: finalUsername,
         isTyping,
         timestamp: Date.now(),
@@ -1225,7 +1376,6 @@ const groupMessages = new Elysia({ prefix: "/group-messages" })
       await realtime.channel(`grp:${groupAuth.groupId}`).emit("group.react", {
         messageId,
         emoji,
-        token: groupAuth.token,
         action,
         roomId: groupAuth.groupId,
         timestamp: Date.now(),
@@ -1273,6 +1423,142 @@ const groupMessages = new Elysia({ prefix: "/group-messages" })
     }
   )
 
+const matchmaking = new Elysia({ prefix: "/room/match" })
+  .use(rateLimitMiddleware)
+  .post(
+    "/join",
+    async ({ set }) => {
+      set.status = 410
+      return {
+        error: "Random matchmaking is disabled to preserve end-to-end encryption. Share an invite code instead.",
+      }
+    },
+    {
+      body: t.Object({
+        roomId: t.String({ minLength: 1, maxLength: 64 }),
+        key: t.String({ minLength: 1, maxLength: 2048 }),
+      }),
+    }
+  )
+  .get(
+    "/status",
+    async ({ set }) => {
+      set.status = 410
+      return {
+        error: "Random matchmaking is disabled to preserve end-to-end encryption. Share an invite code instead.",
+      }
+    },
+    { query: t.Object({ ticketId: t.String({ minLength: 1, maxLength: 64 }) }) }
+  )
+  .post(
+    "/cancel",
+    async ({ set }) => {
+      set.status = 410
+      return {
+        error: "Random matchmaking is disabled to preserve end-to-end encryption. Share an invite code instead.",
+      }
+    },
+    { body: t.Object({ ticketId: t.String({ minLength: 1, maxLength: 64 }) }) }
+  )
+
+const CRYPTO_PAY_HOSTS: Record<string, string> = {
+  mainnet: "https://pay.crypt.bot/api",
+  testnet: "https://testnet-pay.crypt.bot/api",
+}
+
+type CryptoPayInvoiceResult = {
+  invoice_id: number
+  pay_url?: string
+  bot_invoice_url?: string
+  mini_app_invoice_url?: string
+  web_app_invoice_url?: string
+  status: string
+}
+
+const support = new Elysia({ prefix: "/support" })
+  .use(rateLimitMiddleware)
+  .post(
+    "/tip",
+    async ({ body, request, set }) => {
+      const origin = request.headers.get("origin")
+      const requestOrigin = new URL(request.url).origin
+
+      if (origin && origin !== requestOrigin) {
+        set.status = 403
+        return { error: "Cross-site requests are not allowed" }
+      }
+
+      try {
+        const ip = getClientIp(request.headers)
+        const result = await supportRatelimit.limit(ip)
+        if (!result.success) {
+          set.status = 429
+          return { error: "Too many tip requests. Please try again later." }
+        }
+      } catch (error) {
+        console.error("Support rate limit error:", error)
+        set.status = 503
+        return { error: "Tip service is temporarily unavailable" }
+      }
+
+      const token = process.env.CRYPTO_PAY_TOKEN
+      if (!token) {
+        set.status = 503
+        return { error: "Crypto Pay is not configured on the server" }
+      }
+      const host = CRYPTO_PAY_HOSTS[process.env.CRYPTO_PAY_NETWORK === "testnet" ? "testnet" : "mainnet"]
+      const { amount, asset } = body
+
+      try {
+        const res = await fetch(`${host}/createInvoice`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Crypto-Pay-API-Token": token,
+          },
+          body: JSON.stringify({
+            amount: amount.toFixed(asset === "BTC" || asset === "ETH" ? 8 : 2),
+            asset,
+            description: "Tip to anonymous.chat author",
+            paid_btn_name: "callback",
+            paid_btn_url: "https://t.me/FrontendMania",
+            expires_in: 1800,
+          }),
+        })
+
+        const data = (await res.json()) as {
+          ok: boolean
+          result?: CryptoPayInvoiceResult
+          error?: { code?: number; name?: string }
+        }
+
+        if (!res.ok || !data.ok || !data.result) {
+          set.status = 502
+          return { error: data.error?.name || "Crypto Pay API error" }
+        }
+        const r = data.result
+        return {
+          invoiceId: r.invoice_id,
+          payUrl: r.bot_invoice_url || r.pay_url || r.mini_app_invoice_url || r.web_app_invoice_url,
+          miniAppUrl: r.mini_app_invoice_url || null,
+        }
+      } catch (e) {
+        set.status = 502
+        return { error: e instanceof Error ? e.message : "Network error" }
+      }
+    },
+    {
+      body: t.Object({
+        amount: t.Number({ minimum: 0.1, maximum: 1000 }),
+        asset: t.Union([
+          t.Literal("USDT"),
+          t.Literal("TON"),
+          t.Literal("BTC"),
+          t.Literal("ETH"),
+        ]),
+      }),
+    }
+  )
 
 const handles = new Elysia({ prefix: "/handle" })
   .use(rateLimitMiddleware)
@@ -1319,12 +1605,14 @@ const app = new Elysia({ prefix: "/api" })
     return { error: "Internal Server Error" }
   })
   .use(rooms)
+  .use(matchmaking)
   .use(messages)
   .use(channels)
   .use(channelMessages)
   .use(groups)
   .use(groupMessages)
   .use(handles)
+  .use(support)
 
 export const GET = (req: Request) => app.handle(req)
 export const POST = (req: Request) => app.handle(req)

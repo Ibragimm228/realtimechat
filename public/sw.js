@@ -24,6 +24,10 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return
 
   const url = new URL(request.url)
+  const isHttp = url.protocol === "http:" || url.protocol === "https:"
+  if (!isHttp || url.origin !== self.location.origin) {
+    return
+  }
 
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(
@@ -42,7 +46,7 @@ self.addEventListener("fetch", (event) => {
         cached ||
         fetch(request).then((res) => {
           const clone = res.clone()
-          caches.open(CACHE_NAME).then((c) => c.put(request, clone))
+          void caches.open(CACHE_NAME).then((c) => c.put(request, clone)).catch(() => {})
           return res
         })
       )
@@ -61,7 +65,7 @@ self.addEventListener("fetch", (event) => {
     fetch(request)
       .then((res) => {
         const clone = res.clone()
-        caches.open(CACHE_NAME).then((c) => c.put(request, clone))
+        void caches.open(CACHE_NAME).then((c) => c.put(request, clone)).catch(() => {})
         return res
       })
       .catch(() => caches.match(request).then((c) => c || caches.match(OFFLINE_URL)))

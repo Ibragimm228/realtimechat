@@ -5,10 +5,10 @@ import Link from "next/link"
 import { useState, useRef, useEffect } from "react"
 import { formatDistanceToNow } from "date-fns"
 
-const typeConfig: Record<ChatType, { icon: string; label: string; prefix: string }> = {
-  room: { icon: "\uD83D\uDD12", label: "Room", prefix: "/room/" },
-  channel: { icon: "\uD83D\uDCE2", label: "Channel", prefix: "/channel/" },
-  group: { icon: "\uD83D\uDC65", label: "Group", prefix: "/group/" },
+const typeConfig: Record<ChatType, { label: string; prefix: string }> = {
+  room: { label: "Room", prefix: "/room/" },
+  channel: { label: "Channel", prefix: "/channel/" },
+  group: { label: "Group", prefix: "/group/" },
 }
 
 function ChatItem({
@@ -20,41 +20,28 @@ function ChatItem({
   isActive: boolean
   onRemove: () => void
 }) {
-  const config = typeConfig[chat.type]
-  const href = `${config.prefix}${chat.id}#${chat.encryptionKey}`
+  const cfg = typeConfig[chat.type]
+  const href = `${cfg.prefix}${chat.id}#${chat.encryptionKey}`
 
   return (
     <div
-      className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors cursor-pointer ${
-        isActive
-          ? "bg-primary/15 text-primary"
-          : "hover:bg-muted text-foreground"
-      }`}
+      className={`room-item ${isActive ? "active" : ""}`}
       onClick={() => {
         if (!isActive) window.location.href = href
       }}
     >
-      <span className="text-base shrink-0">{config.icon}</span>
-      <div className="flex-1 min-w-0">
-        <div className="text-xs font-bold truncate">{chat.name}</div>
-        <div className="text-[10px] text-muted-foreground">
-          {formatDistanceToNow(chat.joinedAt, { addSuffix: true })}
-        </div>
-      </div>
-      {isActive && (
-        <span className="w-2 h-2 rounded-full bg-green-500 shrink-0 animate-pulse" title="Active" />
-      )}
+      <div className="rid" title={chat.name}>{chat.name}</div>
+      <div className="rmeta">{cfg.label}</div>
+      <div className="rlast">{formatDistanceToNow(chat.joinedAt, { addSuffix: true })}</div>
       <button
+        className="rclose"
         onClick={(e) => {
           e.stopPropagation()
           onRemove()
         }}
-        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-all shrink-0"
         title="Remove from list"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
+        remove ✕
       </button>
     </div>
   )
@@ -95,9 +82,7 @@ export function ChatSidebar({
 
   useEffect(() => {
     const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches[0].clientX < 30) {
-        touchStartRef.current = e.touches[0].clientX
-      }
+      if (e.touches[0].clientX < 30) touchStartRef.current = e.touches[0].clientX
     }
     const handleTouchEnd = (e: TouchEvent) => {
       if (touchStartRef.current !== null) {
@@ -122,74 +107,108 @@ export function ChatSidebar({
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed left-3 top-1/2 -translate-y-1/2 z-50 p-2 rounded-full bg-card border border-border shadow-lg hover:bg-muted transition-all group"
+        className="icon-btn"
+        style={{ position: "fixed", left: 14, top: "50%", transform: "translateY(-50%)", zIndex: 50, width: 36, height: 36 }}
         title="Chats (Alt+S)"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground group-hover:text-foreground transition-colors">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
         {chats.length > 0 && (
-          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center">
+          <span
+            style={{
+              position: "absolute",
+              top: -4,
+              right: -4,
+              minWidth: 16,
+              height: 16,
+              padding: "0 4px",
+              borderRadius: 999,
+              background: "var(--accent)",
+              color: "var(--accent-ink)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              fontWeight: 600,
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
             {chats.length}
           </span>
         )}
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 bg-black/20 z-[60] animate-in fade-in duration-200" />
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "color-mix(in srgb, var(--ink) 30%, transparent)",
+            zIndex: 60,
+            animation: "fadeIn .2s ease",
+          }}
+        />
       )}
 
-      <div
+      <aside
         ref={panelRef}
-        className={`fixed left-0 top-0 h-full w-72 bg-card border-r border-border shadow-2xl z-[70] transition-transform duration-300 ease-out flex flex-col ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        style={{
+          position: "fixed",
+          left: 0,
+          top: 0,
+          height: "100%",
+          width: 300,
+          background: "var(--bg)",
+          borderRight: "1px solid var(--rule)",
+          zIndex: 70,
+          transform: isOpen ? "translateX(0)" : "translateX(-105%)",
+          transition: "transform .3s ease",
+          display: "flex",
+          flexDirection: "column",
+        }}
       >
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-black uppercase tracking-wider text-foreground">Chats</span>
-            <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full text-muted-foreground font-bold">
-              {chats.length}
-            </span>
+        <div
+          style={{
+            padding: "14px 18px",
+            borderBottom: "1px solid var(--rule)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="brand-mark">CHATS</div>
+            <span className="mono text-muted" style={{ fontSize: 11 }}>{chats.length}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/"
-              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              title="Home"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <Link href="/" className="icon-btn" title="Home">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
               </svg>
             </Link>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            <button onClick={() => setIsOpen(false)} className="icon-btn" title="Close">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             </button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 space-y-4">
+        <div style={{ flex: 1, overflowY: "auto" }}>
           {chats.length === 0 && (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground/30">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
-              </div>
-              <p className="text-muted-foreground text-xs">No active chats</p>
-              <Link href="/" className="text-primary text-xs font-bold mt-2 inline-block hover:underline">
-                Create one
-              </Link>
+            <div className="empty-state">
+              <div className="kicker"><span>— Empty —</span></div>
+              <h3>No active chats</h3>
+              <p>Start or join one from the home screen.</p>
+              <Link href="/" className="btn-ghost">Home</Link>
             </div>
           )}
 
           {rooms.length > 0 && (
-            <Section label="Rooms" count={rooms.length}>
+            <div className="side-section">
+              <h4>Rooms <span className="mono text-muted">{rooms.length}</span></h4>
               {rooms.map((c) => (
                 <ChatItem
                   key={c.id}
@@ -198,11 +217,12 @@ export function ChatSidebar({
                   onRemove={() => removeChat("room", c.id)}
                 />
               ))}
-            </Section>
+            </div>
           )}
 
           {groups.length > 0 && (
-            <Section label="Groups" count={groups.length}>
+            <div className="side-section">
+              <h4>Groups <span className="mono text-muted">{groups.length}</span></h4>
               {groups.map((c) => (
                 <ChatItem
                   key={c.id}
@@ -211,11 +231,12 @@ export function ChatSidebar({
                   onRemove={() => removeChat("group", c.id)}
                 />
               ))}
-            </Section>
+            </div>
           )}
 
           {channels.length > 0 && (
-            <Section label="Channels" count={channels.length}>
+            <div className="side-section">
+              <h4>Channels <span className="mono text-muted">{channels.length}</span></h4>
               {channels.map((c) => (
                 <ChatItem
                   key={c.id}
@@ -224,28 +245,24 @@ export function ChatSidebar({
                   onRemove={() => removeChat("channel", c.id)}
                 />
               ))}
-            </Section>
+            </div>
           )}
         </div>
 
-        <div className="p-3 border-t border-border">
-          <div className="text-[10px] text-muted-foreground/40 text-center font-mono">
-            Alt+S to toggle · Swipe from left edge on mobile
-          </div>
+        <div
+          style={{
+            padding: "10px 18px",
+            borderTop: "1px solid var(--rule-soft)",
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            letterSpacing: "0.1em",
+            color: "var(--muted-2)",
+            textAlign: "center",
+          }}
+        >
+          Alt+S to toggle · swipe from left
         </div>
-      </div>
+      </aside>
     </>
-  )
-}
-
-function Section({ label, count, children }: { label: string; count: number; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-1.5 px-1">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</span>
-        <span className="text-[10px] text-muted-foreground/50">{count}</span>
-      </div>
-      <div className="space-y-0.5">{children}</div>
-    </div>
   )
 }

@@ -1,9 +1,9 @@
 import { redis } from "@/lib/redis"
+import { MAX_TRANSPORT_MESSAGE_LENGTH } from "@/lib/message-limits"
 import { InferRealtimeEvents, Realtime } from "@upstash/realtime"
 import { z } from "zod"
 
 const roomId = z.string().min(1).max(64)
-const token = z.string().min(10).max(128)
 const username = z.string().min(1).max(32)
 
 const baseEnvelope = z.object({
@@ -14,21 +14,18 @@ const baseEnvelope = z.object({
 export const message = baseEnvelope.extend({
   id: z.string().min(1).max(64),
   sender: username,
-  text: z.string().min(1).max(2000),
-  token: token.optional(),
+  text: z.string().min(1).max(MAX_TRANSPORT_MESSAGE_LENGTH),
 })
 
 export const presenceJoin = baseEnvelope.extend({
-  token,
   username,
 })
 
 export const presenceLeave = baseEnvelope.extend({
-  token,
+  username,
 })
 
 export const typing = baseEnvelope.extend({
-  token,
   username,
   isTyping: z.boolean(),
 })
@@ -48,7 +45,6 @@ export const deleteMessage = z.object({
 export const react = z.object({
   messageId: z.string(),
   emoji: z.string().max(8),
-  token: token,
   action: z.enum(["add", "remove"]),
   roomId,
   timestamp: z.number().int().nonnegative(),
@@ -57,7 +53,7 @@ export const react = z.object({
 export const pin = z.object({
   messageId: z.string(),
   sender: username,
-  text: z.string().max(2000),
+  text: z.string().max(MAX_TRANSPORT_MESSAGE_LENGTH),
   action: z.enum(["pin", "unpin"]),
   pinnedBy: username,
   roomId,

@@ -1,3 +1,5 @@
+import { base64ToBytes, bytesToBase64 } from "@/lib/base64"
+
 export async function generateKey(): Promise<string> {
   const key = await window.crypto.subtle.generateKey(
     {
@@ -40,16 +42,12 @@ export async function encryptMessage(text: string, key: CryptoKey): Promise<stri
   buf.set(iv)
   buf.set(encryptedArray, iv.length)
   
-  return btoa(String.fromCharCode(...buf))
+  return bytesToBase64(buf)
 }
 
 export async function decryptMessage(encryptedText: string, key: CryptoKey): Promise<string> {
   try {
-    const str = atob(encryptedText)
-    const buf = new Uint8Array(str.length)
-    for (let i = 0; i < str.length; i++) {
-      buf[i] = str.charCodeAt(i)
-    }
+    const buf = base64ToBytes(encryptedText)
 
     const iv = buf.slice(0, 12)
     const data = buf.slice(12)

@@ -10,32 +10,23 @@ export type ActiveChat = {
   joinedAt: number
 }
 
-const STORAGE_KEY = "active_chats"
 let listeners: Array<() => void> = []
+let chatsStore: ActiveChat[] = []
 
 function emitChange() {
   for (const listener of listeners) listener()
 }
 
 function getChats(): ActiveChat[] {
-  if (typeof window === "undefined") return []
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch {
-    return []
-  }
+  return chatsStore
 }
 
 function saveChats(chats: ActiveChat[]) {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(chats))
+  chatsStore = chats
   emitChange()
 }
 
-const getSnapshot = () => {
-  if (typeof window === "undefined") return "[]"
-  return sessionStorage.getItem(STORAGE_KEY) || "[]"
-}
+const getSnapshot = () => JSON.stringify(chatsStore)
 
 const getServerSnapshot = () => "[]"
 

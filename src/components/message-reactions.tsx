@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 const REACTION_EMOJIS = [
   { emoji: "\uD83D\uDC4D", label: "like" },
@@ -17,64 +17,114 @@ interface Reaction {
   hasReacted: boolean
 }
 
-interface MessageReactionsProps {
+export function MessageReactions({
+  reactions,
+  onReact,
+  align = "start",
+}: {
   reactions: Reaction[]
   onReact: (emoji: string) => void
-}
-
-export function MessageReactions({ reactions, onReact }: MessageReactionsProps) {
-  const [showPicker, setShowPicker] = useState(false)
-
-  const activeReactions = reactions.filter((r) => r.count > 0)
-
+  align?: "start" | "end"
+}) {
+  const active = reactions.filter((r) => r.count > 0)
+  if (active.length === 0) return null
   return (
-    <div className="flex items-center gap-1 flex-wrap mt-1 relative">
-      {activeReactions.map((r) => (
+    <div
+      className="reactions"
+      style={{ justifyContent: align === "end" ? "flex-end" : "flex-start" }}
+    >
+      {active.map((r) => (
         <button
           key={r.emoji}
+          type="button"
+          className={`reaction ${r.hasReacted ? "mine" : ""}`}
           onClick={() => onReact(r.emoji)}
-          className={`
-            flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-bold transition-all active:scale-90
-            ${r.hasReacted
-              ? "bg-primary/15 text-primary border border-primary/30"
-              : "bg-muted text-muted-foreground border border-transparent hover:border-border"
-            }
-          `}
+          title={r.hasReacted ? "Remove reaction" : "Add reaction"}
         >
-          <span>{r.emoji}</span>
-          <span>{r.count}</span>
+          <span className="sym">{r.emoji}</span>
+          <span className="rct-count">{r.count}</span>
         </button>
       ))}
-
-      <div className="relative">
-        <button
-          onClick={() => setShowPicker((p) => !p)}
-          className="w-6 h-6 rounded-full bg-muted/60 hover:bg-muted flex items-center justify-center transition-colors text-muted-foreground/50 hover:text-muted-foreground"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>
-
-        {showPicker && (
-          <div className="absolute bottom-full left-0 mb-1 flex gap-0.5 bg-card border border-border rounded-xl shadow-xl p-1.5 animate-in fade-in zoom-in-95 duration-150 z-50">
-            {REACTION_EMOJIS.map((r) => (
-              <button
-                key={r.label}
-                onClick={() => {
-                  onReact(r.emoji)
-                  setShowPicker(false)
-                }}
-                className="w-8 h-8 flex items-center justify-center text-lg hover:bg-muted rounded-lg transition-all hover:scale-110"
-                title={r.label}
-              >
-                {r.emoji}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
+  )
+}
+
+export function ReactionPicker({
+  onReact,
+  align = "start",
+  variant = "icon",
+}: {
+  onReact: (emoji: string) => void
+  align?: "start" | "end"
+  variant?: "icon" | "pill"
+}) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [open])
+
+  return (
+    <span ref={wrapRef} style={{ position: "relative", display: "inline-flex" }}>
+      <button
+        type="button"
+        title="Add reaction"
+        aria-label="Add reaction"
+        className={variant === "pill" ? `reaction reaction-add ${open ? "active" : ""}` : open ? "active" : ""}
+        onClick={(e) => {
+          e.stopPropagation()
+          setOpen((v) => !v)
+        }}
+      >
+        {variant === "pill" ? (
+          <>
+            <span className="sym">🙂</span>
+            <span className="rct-count">+</span>
+          </>
+        ) : (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M9 10h.01M15 10h.01" />
+            <path d="M8.5 15a4 4 0 0 0 7 0" />
+          </svg>
+        )}
+      </button>
+
+      {open && (
+        <div
+          className="react-picker"
+          style={{
+            top: "auto",
+            bottom: "calc(100% + 6px)",
+            ...(align === "end"
+              ? { right: 0, left: "auto" }
+              : { left: 0, right: "auto" }),
+          }}
+        >
+          {REACTION_EMOJIS.map((r) => (
+            <button
+              key={r.emoji}
+              type="button"
+              title={r.label}
+              onClick={() => {
+                onReact(r.emoji)
+                setOpen(false)
+              }}
+            >
+              {r.emoji}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
   )
 }
 

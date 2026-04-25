@@ -4,7 +4,6 @@ import { nanoid } from "nanoid"
 import {
   AUTH_COOKIE_MAX_AGE_SECONDS,
   AUTH_COOKIE_NAME,
-  admitMember,
   getClientIp,
   getMetaKey,
 } from "@/lib/membership"
@@ -41,38 +40,19 @@ async function handleRoom(req: NextRequest, roomId: string) {
   const { token, response } = ensureToken(req)
   if (response) return response
 
-  const meta = await redis.hgetall(
-    getMetaKey("room", roomId)
-  ) as { connected: string | string[]; createdAt: number; capacity?: number } | null
-
-  if (!meta) {
-    return NextResponse.redirect(new URL("/?error=room-not-found", req.url))
-  }
-
-  const capacity = Number(meta.capacity) || 2
-
   try {
-    const result = await admitMember("room", roomId, token, capacity)
-
-    if (result === 'already-connected' || result === 'success') {
-      const next = NextResponse.next()
-      setAuthCookie(next, token)
-      return next
-    }
-
-    if (result === 'room-full') {
-      return NextResponse.redirect(new URL("/?error=room-full", req.url))
-    }
-
-    if (result === 'room-not-found') {
+    const meta = await redis.hgetall(getMetaKey("room", roomId)) as Record<string, unknown> | null
+    if (!meta) {
       return NextResponse.redirect(new URL("/?error=room-not-found", req.url))
     }
-
-    return NextResponse.redirect(new URL("/?error=server-error", req.url))
   } catch (error) {
     console.error("Redis error:", error)
     return NextResponse.redirect(new URL("/?error=server-error", req.url))
   }
+
+  const next = NextResponse.next()
+  setAuthCookie(next, token)
+  return next
 }
 
 async function handleChannel(req: NextRequest, channelId: string) {
@@ -83,38 +63,22 @@ async function handleChannel(req: NextRequest, channelId: string) {
   const { token, response } = ensureToken(req)
   if (response) return response
 
-  const meta = await redis.hgetall(
-    getMetaKey("channel", channelId)
-  ) as { connected: string | string[]; capacity?: number } | null
-
-  if (!meta) {
-    return NextResponse.redirect(new URL("/?error=room-not-found", req.url))
-  }
-
-  const capacity = Number(meta.capacity) || 1000
-
   try {
-    const result = await admitMember("channel", channelId, token, capacity)
+    const meta = await redis.hgetall(
+      getMetaKey("channel", channelId)
+    ) as Record<string, unknown> | null
 
-    if (result === 'already-connected' || result === 'success') {
-      const next = NextResponse.next()
-      setAuthCookie(next, token)
-      return next
-    }
-
-    if (result === 'room-full') {
-      return NextResponse.redirect(new URL("/?error=room-full", req.url))
-    }
-
-    if (result === 'room-not-found') {
+    if (!meta) {
       return NextResponse.redirect(new URL("/?error=room-not-found", req.url))
     }
-
-    return NextResponse.redirect(new URL("/?error=server-error", req.url))
   } catch (error) {
     console.error("Redis error:", error)
     return NextResponse.redirect(new URL("/?error=server-error", req.url))
   }
+
+  const next = NextResponse.next()
+  setAuthCookie(next, token)
+  return next
 }
 
 async function handleGroup(req: NextRequest, groupId: string) {
@@ -125,38 +89,22 @@ async function handleGroup(req: NextRequest, groupId: string) {
   const { token, response } = ensureToken(req)
   if (response) return response
 
-  const meta = await redis.hgetall(
-    getMetaKey("group", groupId)
-  ) as { connected: string | string[]; capacity?: number } | null
-
-  if (!meta) {
-    return NextResponse.redirect(new URL("/?error=room-not-found", req.url))
-  }
-
-  const capacity = Number(meta.capacity) || 500
-
   try {
-    const result = await admitMember("group", groupId, token, capacity)
+    const meta = await redis.hgetall(
+      getMetaKey("group", groupId)
+    ) as Record<string, unknown> | null
 
-    if (result === 'already-connected' || result === 'success') {
-      const next = NextResponse.next()
-      setAuthCookie(next, token)
-      return next
-    }
-
-    if (result === 'room-full') {
-      return NextResponse.redirect(new URL("/?error=room-full", req.url))
-    }
-
-    if (result === 'room-not-found') {
+    if (!meta) {
       return NextResponse.redirect(new URL("/?error=room-not-found", req.url))
     }
-
-    return NextResponse.redirect(new URL("/?error=server-error", req.url))
   } catch (error) {
     console.error("Redis error:", error)
     return NextResponse.redirect(new URL("/?error=server-error", req.url))
   }
+
+  const next = NextResponse.next()
+  setAuthCookie(next, token)
+  return next
 }
 
 async function hashIp(ip: string): Promise<string> {

@@ -1,10 +1,9 @@
 import Image from "next/image"
 import { decryptMessage } from "@/lib/crypto"
-import { decryptFile, isImageType, isAudioType, formatFileSize, type FileMetadata } from "@/lib/file-crypto"
+import { decryptFile, isPreviewableImageType, isAudioType, formatFileSize, type FileMetadata } from "@/lib/file-crypto"
 import { parseMarkdown } from "@/lib/markdown"
 import { useEffect, useState, useRef } from "react"
 
-const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+"
 const WHISPER_VIEW_SECONDS = 5
 
 interface ReplyData {
@@ -50,7 +49,6 @@ export const EncryptedMessage = ({
   const [fileUrl, setFileUrl] = useState<string | null>(null)
   const [burnTime, setBurnTime] = useState<number | null>(null)
   const [content, setContent] = useState("")
-  const [displayContent, setDisplayContent] = useState("")
   const [isRevealed, setIsRevealed] = useState(false)
   const [replyData, setReplyData] = useState<ReplyData | null>(null)
   const onBurnRef = useRef(onBurn)
@@ -63,35 +61,6 @@ export const EncryptedMessage = ({
   useEffect(() => {
     onDecryptedRef.current = onDecrypted
   }, [onDecrypted])
-
-  useEffect(() => {
-    if (!content || isRevealed) return
-
-    let ticks = 0
-
-    const interval = setInterval(() => {
-      const revealed = Math.floor(ticks / 2)
-
-      setDisplayContent(
-        content
-          .split("")
-          .map((char, index) => {
-            if (index < revealed) return char
-            return CHARS[Math.floor(Math.random() * CHARS.length)]
-          })
-          .join("")
-      )
-
-      if (revealed >= content.length) {
-        clearInterval(interval)
-        setIsRevealed(true)
-      }
-
-      ticks += 1
-    }, 30)
-
-    return () => clearInterval(interval)
-  }, [content, isRevealed])
 
   useEffect(() => {
     if (burnTime === null || burnTime <= 0) {
@@ -122,6 +91,7 @@ export const EncryptedMessage = ({
         setIsBurn(true)
         const plaintext = rest.slice(7)
         setContent(plaintext)
+        setIsRevealed(true)
         onDecryptedRef.current?.(plaintext)
         if (burnAfter && messageTimestamp) {
           const elapsed = Math.floor((Date.now() - messageTimestamp) / 1000)
@@ -133,6 +103,7 @@ export const EncryptedMessage = ({
         setIsCode(true)
         const plaintext = rest.slice(7)
         setContent(plaintext)
+        setIsRevealed(true)
         onDecryptedRef.current?.(plaintext)
       } else if (rest.startsWith("INK:::")) {
         setIsInk(true)
@@ -160,6 +131,7 @@ export const EncryptedMessage = ({
         }).catch(() => setContent("Failed to decrypt voice"))
       } else {
         setContent(rest)
+        setIsRevealed(true)
         onDecryptedRef.current?.(rest)
       }
     })
@@ -174,6 +146,12 @@ export const EncryptedMessage = ({
 
     return () => clearTimeout(timer)
   }, [whisperRevealed, whisperCountdown])
+
+  useEffect(() => {
+    return () => {
+      if (fileUrl) URL.revokeObjectURL(fileUrl)
+    }
+  }, [fileUrl])
 
   const replyBlock = replyData && (
     <div className="mb-2 pl-2 border-l-2 border-primary/40 opacity-70">
@@ -229,8 +207,17 @@ export const EncryptedMessage = ({
       <>
         {replyBlock}
         <div className="space-y-1">
-          {isImageType(fileMeta.type) ? (
-            <Image src={fileUrl} alt={fileMeta.name} width={300} height={300} unoptimized className="max-w-[300px] max-h-[300px] rounded-lg object-cover cursor-pointer" onClick={() => window.open(fileUrl, "_blank")} />
+          {isPreviewableImageType(fileMeta.type) ? (
+            <div className="space-y-2">
+              <Image src={fileUrl} alt={fileMeta.name} width={300} height={300} unoptimized className="max-w-[300px] max-h-[300px] rounded-lg object-cover" />
+              <a
+                href={fileUrl}
+                download={fileMeta.name}
+                className="inline-flex items-center gap-2 text-xs underline underline-offset-4 opacity-80 hover:opacity-100"
+              >
+                Download image
+              </a>
+            </div>
           ) : isAudioType(fileMeta.type) ? (
             <div className="flex items-center gap-3 p-2 bg-black/10 rounded-lg min-w-[200px]">
               <audio src={fileUrl} controls className="w-full h-8 [&::-webkit-media-controls-panel]:bg-transparent" />
@@ -283,7 +270,7 @@ export const EncryptedMessage = ({
           dangerouslySetInnerHTML={{ __html: parseMarkdown(content) }}
         />
       ) : (
-        <span className="whitespace-pre-wrap">{displayContent || "..."}</span>
+        <span className="text-xs text-muted-foreground opacity-50">…</span>
       )}
     </div>
   )

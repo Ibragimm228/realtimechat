@@ -1,4 +1,8 @@
-const MAX_FILE_SIZE = 5 * 1024 * 1024
+import { base64ToBytes, bytesToBase64 } from "@/lib/base64"
+import { MAX_ATTACHMENT_FILE_SIZE } from "@/lib/message-limits"
+
+const BLOCKED_FILE_TYPES = new Set(["image/svg+xml", "text/html", "application/xhtml+xml"])
+const BLOCKED_FILE_EXTENSIONS = /\.(svg|html?|xhtml)$/i
 
 export interface FileMetadata {
   name: string
@@ -6,8 +10,17 @@ export interface FileMetadata {
   size: number
 }
 
+export function assertSafeAttachment(file: Pick<FileMetadata, "name" | "type">) {
+  if (BLOCKED_FILE_TYPES.has(file.type) || BLOCKED_FILE_EXTENSIONS.test(file.name)) {
+    throw new Error("SVG and HTML attachments are blocked for security reasons")
+  }
+}
+
 export async function encryptFile(file: File, key: CryptoKey): Promise<string> {
-  if (file.size > MAX_FILE_SIZE) throw new Error("File too large (max 5MB)")
+  if (file.size > MAX_ATTACHMENT_FILE_SIZE) {
+    throw new Error(`File too large (max ${(MAX_ATTACHMENT_FILE_SIZE / 1024 / 1024).toFixed(0)}MB)`)
+  }
+  assertSafeAttachment(file)
 
   const buffer = await file.arrayBuffer()
   const iv = crypto.getRandomValues(new Uint8Array(12))
@@ -28,13 +41,11 @@ export async function encryptFile(file: File, key: CryptoKey): Promise<string> {
   payload.set(iv, 2 + metaBytes.length)
   payload.set(encArr, 2 + metaBytes.length + iv.length)
 
-  return btoa(String.fromCharCode(...payload))
+  return bytesToBase64(payload)
 }
 
 export async function decryptFile(data: string, key: CryptoKey): Promise<{ blob: Blob; meta: FileMetadata }> {
-  const raw = atob(data)
-  const payload = new Uint8Array(raw.length)
-  for (let i = 0; i < raw.length; i++) payload[i] = raw.charCodeAt(i)
+  const payload = base64ToBytes(data)
 
   const metaLen = (payload[0] << 8) | payload[1]
   const metaBytes = payload.slice(2, 2 + metaLen)
@@ -47,8 +58,8 @@ export async function decryptFile(data: string, key: CryptoKey): Promise<{ blob:
   return { blob: new Blob([decrypted], { type: meta.type }), meta }
 }
 
-export function isImageType(type: string): boolean {
-  return type.startsWith("image/")
+export function isPreviewableImageType(type: string): boolean {
+  return type.startsWith("image/") && type !== "image/svg+xml"
 }
 
 export function isAudioType(type: string): boolean {

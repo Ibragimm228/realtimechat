@@ -1,10 +1,10 @@
 # >private_chat
 
-End-to-end encrypted, self-destructing chat rooms. No accounts, no logs, no traces.
+Invite-based encrypted, self-destructing chat rooms. No accounts, minimal persistence, and honest privacy trade-offs.
 
 ## Features
 
-- **End-to-End Encryption** — AES-GCM-256 encryption. Keys never leave the client. Stored in URL hash (not sent to server).
+- **Invite-Based Encryption** — AES-GCM-256 encryption. Shared keys stay in the client and access is gated by a proof derived from that key.
 - **Self-Destructing Rooms** — Set a timer. When it expires, everything is permanently deleted.
 - **Panic Mode** — Press `Alt+P` to instantly blur the screen. PIN-protected unlock. 2 wrong attempts = room destroyed.
 - **Whisper Messages** — `/w` sends click-to-reveal messages that auto-expire in 5 seconds.
@@ -83,20 +83,34 @@ Get these from [upstash.com](https://upstash.com/) — create a Redis database.
 | `/b <text>` | Burn — self-destructs in 15 seconds |
 | `/code <text>` | Code — monospace block |
 
+## Privacy Notes
+
+- Message content is encrypted client-side for invite-based chats.
+- The server still sees metadata such as room/channel/group IDs, membership, timestamps, handles, and traffic volume.
+- This project is **not** comparable to Signal's protocol guarantees (no Double Ratchet, no forward secrecy, web-app trust model).
+- Active chats now stay in memory for the current tab instead of being persisted in `sessionStorage`.
+- Random matchmaking was removed because it required relaying key material through the server.
+
+## V2 Prototype
+
+- A parallel protocol-based prototype now lives at `/v2`.
+- `v2` introduces persistent user/device identities, direct-session bootstrap, safety numbers, sender-key groups, device linking/revocation, and a dedicated `api/v2` surface.
+- This is still a **web MVP**, not a finished Signal-class client.
+
 ## Architecture
 
 ```
 Client (Browser)
 ├── Generates AES-256 key → stored in URL hash (#)
+├── Derives an access proof from the key
 ├── Encrypts all messages before sending
-├── Decrypts messages on receive
-└── Key never sent to server
+└── Decrypts messages on receive
 
 Server (Next.js + Elysia)
-├── Stores encrypted blobs in Redis
+├── Stores encrypted blobs and metadata in Redis
+├── Verifies key-derived access proofs before admitting members
 ├── Manages room lifecycle (TTL, capacity)
-├── Broadcasts via Upstash Realtime
-└── Cannot read message content
+└── Broadcasts authorized realtime updates via Upstash Realtime
 ```
 
 ## Deploy

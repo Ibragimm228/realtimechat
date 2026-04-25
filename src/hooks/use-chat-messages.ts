@@ -14,6 +14,22 @@ const ROOM_EVENTS = ["chat.message", "chat.destroy", "chat.typing", "chat.join",
 const CHANNEL_EVENTS = ["channel.message", "channel.typing", "channel.delete", "channel.react", "channel.pin"] as const
 const GROUP_EVENTS = ["group.message", "group.typing", "group.delete", "group.destroy", "group.react", "group.pin"] as const
 
+type ChatMessage = {
+  id: string
+  sender: string
+  text: string
+  timestamp: number
+  roomId: string
+  token?: string
+  burnAfter?: number
+  optimistic?: boolean
+}
+
+type MessagesPayload = {
+  messages: ChatMessage[]
+  reactions: Record<string, Record<string, { count: number; hasReacted: boolean }>>
+}
+
 function realtimeConfig(type: ChatType, id: string) {
   switch (type) {
     case "room": return {
@@ -37,7 +53,15 @@ function realtimeConfig(type: ChatType, id: string) {
   }
 }
 
-export function useChatMessages({ type, id }: { type: ChatType; id: string }) {
+export function useChatMessages({
+  type,
+  id,
+  enabled = true,
+}: {
+  type: ChatType
+  id: string
+  enabled?: boolean
+}) {
   const router = useRouter()
   const { toast } = useToast()
   const { username } = useUsername()
@@ -54,9 +78,11 @@ export function useChatMessages({ type, id }: { type: ChatType; id: string }) {
   const typingTimeoutRef = useRef<NodeJS.Timeout>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [newMsgCount, setNewMsgCount] = useState(0)
+  const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
 
-  const { data: messages, refetch } = useQuery({
+  const { data: queryMessages, refetch } = useQuery({
     queryKey: [type === "room" ? "messages" : `${type}-messages`, id],
+    enabled,
     queryFn: async () => {
       switch (type) {
         case "room": return (await client.messages.get({ query: { roomId: id } })).data
@@ -67,13 +93,34 @@ export function useChatMessages({ type, id }: { type: ChatType; id: string }) {
   })
 
   useEffect(() => {
-    if (messages?.reactions) {
-      queueMicrotask(() => setReactions(messages.reactions))
+    if (queryMessages?.reactions) {
+      queueMicrotask(() => setReactions(queryMessages.reactions))
     }
-  }, [messages?.reactions])
+  }, [queryMessages?.reactions])
+
+  useEffect(() => {
+    if (!queryMessages?.messages?.length) return
+
+    const frame = requestAnimationFrame(() => {
+      setOptimisticMessages((prev) =>
+        prev.filter(
+          (optimistic) =>
+            !queryMessages.messages.some(
+              (message) =>
+                message.text === optimistic.text &&
+                message.sender === optimistic.sender &&
+                message.roomId === optimistic.roomId,
+            ),
+        ),
+      )
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [queryMessages?.messages])
 
   const { refetch: refetchPinned } = useQuery({
     queryKey: ["pinned", type, id],
+    enabled: enabled && type === "room",
     queryFn: async () => {
       if (type !== "room") return { pinned: [] }
       const res = (await client.messages.pinned.get({ query: { roomId: id } })).data as { pinned: { id: string; sender: string; text: string; pinnedBy: string }[] } | undefined
@@ -104,9 +151,29 @@ export function useChatMessages({ type, id }: { type: ChatType; id: string }) {
 
   const rt = useMemo(() => realtimeConfig(type, id), [type, id])
 
+  const messages = useMemo<MessagesPayload | undefined>(() => {
+    if (!queryMessages && optimisticMessages.length === 0) return undefined
+
+    const serverMessages = queryMessages?.messages || []
+    const remainingOptimistic = optimisticMessages.filter(
+      (optimistic) =>
+        !serverMessages.some(
+          (message) =>
+            message.text === optimistic.text &&
+            message.sender === optimistic.sender &&
+            message.roomId === optimistic.roomId,
+        ),
+    )
+
+    return {
+      messages: [...serverMessages, ...remainingOptimistic].sort((a, b) => a.timestamp - b.timestamp),
+      reactions: queryMessages?.reactions || {},
+    }
+  }, [optimisticMessages, queryMessages])
+
   useRealtime({
-    channels: rt.channels,
-    events: rt.events,
+    channels: enabled ? rt.channels : [],
+    events: enabled ? rt.events : [],
     onData: ({ event, data }) => {
       if (event === rt.messageEvent) { refetch(); playNotification() }
       if (event === rt.deleteEvent) refetch()
@@ -234,10 +301,19 @@ export function useChatMessages({ type, id }: { type: ChatType; id: string }) {
     setDecryptedTexts((prev) => ({ ...prev, [msgId]: plaintext }))
   }, [])
 
+  const addOptimisticMessage = useCallback((message: ChatMessage) => {
+    setOptimisticMessages((prev) => [...prev, { ...message, optimistic: true }])
+  }, [])
+
+  const removeOptimisticMessage = useCallback((messageId: string) => {
+    setOptimisticMessages((prev) => prev.filter((message) => message.id !== messageId))
+  }, [])
+
   return {
     messages, refetch, deleteMessage, sendTyping,
     typingUsers, decryptedTexts, copiedMessageId, reactions, pinnedMessages,
     messagesEndRef, scrollContainerRef, showScrollBtn, newMsgCount,
     handleTyping, copyMessage, handleReact, scrollToBottom, onDecrypted, pinMessage,
+    addOptimisticMessage, removeOptimisticMessage,
   }
 }

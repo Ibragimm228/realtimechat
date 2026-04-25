@@ -6,32 +6,28 @@ const STORAGE_KEY = "onboarding_completed"
 
 const STEPS = [
   {
-    title: "End-to-End Encrypted",
-    description: "All messages are encrypted with AES-GCM-256. The encryption key is in the URL hash — never sent to the server.",
-    icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-    ),
+    kicker: "01 / 04",
+    title: "End-to-end encrypted",
+    description:
+      "All messages are encrypted with AES-GCM-256 in your browser. The key lives in the URL hash — the server never sees it.",
   },
   {
-    title: "Panic Mode",
-    description: "Press Alt+P or Escape to instantly hide the chat. A decoy screen disguises it as Google or Calculator.",
-    icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m12 14 4-4"/><path d="m3.34 19 8.66-15 8.66 15H3.34Z"/><path d="m12 14-4-4"/></svg>
-    ),
+    kicker: "02 / 04",
+    title: "Panic mode",
+    description:
+      "Press Alt+P or Escape to hide the chat instantly. A decoy screen disguises the room as Google, a calculator or notes.",
   },
   {
-    title: "Self-Destructing",
-    description: "Rooms auto-delete after the set timer expires. Use /b to send burn messages that disappear in 15 seconds.",
-    icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-    ),
+    kicker: "03 / 04",
+    title: "Self-destructing",
+    description:
+      "Rooms auto-delete after the timer expires. Use /b to send burn messages that vanish 15 seconds after being read.",
   },
   {
-    title: "Special Commands",
-    description: "/w whisper (auto-expires) · /b burn (self-destructs) · /code snippet · /ink invisible text",
-    icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-    ),
+    kicker: "04 / 04",
+    title: "Special commands",
+    description:
+      "/w whisper · /b burn · /code snippet · /ink invisible — prefix any message to send it in a special mode.",
   },
 ]
 
@@ -49,32 +45,59 @@ export function Onboarding() {
 
   if (!show) return null
 
+  const current = STEPS[step]
+  const isLast = step === STEPS.length - 1
+
   return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-card w-full max-w-sm rounded-2xl shadow-2xl border border-border overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="p-8 text-center space-y-4">
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto text-primary">
-            {STEPS[step].icon}
+    <div className="modal-backdrop" style={{ zIndex: 150 }}>
+      <div className="modal">
+        <div className="modal-head">
+          <div className="kicker">
+            <span className="num">{current.kicker}</span>
+            <span>— Welcome</span>
           </div>
-          <h2 className="text-xl font-black tracking-tight">{STEPS[step].title}</h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">{STEPS[step].description}</p>
         </div>
+        <div className="modal-body">
+          <h3
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: 36,
+              letterSpacing: "-0.01em",
+              lineHeight: 1.05,
+              color: "var(--ink)",
+              fontWeight: 400,
+            }}
+          >
+            {current.title}
+          </h3>
+          <p style={{ fontSize: 14, lineHeight: 1.55, color: "var(--ink-3)" }}>
+            {current.description}
+          </p>
 
-        <div className="flex justify-center gap-1.5 pb-4">
-          {STEPS.map((_, i) => (
-            <div key={i} className={`w-2 h-2 rounded-full transition-all ${i === step ? "bg-primary w-6" : "bg-muted-foreground/20"}`} />
-          ))}
+          <div style={{ display: "flex", gap: 6, justifyContent: "center", paddingTop: 6 }}>
+            {STEPS.map((_, i) => (
+              <span
+                key={i}
+                style={{
+                  width: i === step ? 28 : 8,
+                  height: 4,
+                  background: i === step ? "var(--ink)" : "var(--rule-soft)",
+                  transition: "all .2s",
+                  borderRadius: "var(--radius)",
+                }}
+              />
+            ))}
+          </div>
         </div>
-
-        <div className="p-4 border-t border-border flex gap-2">
-          <button onClick={complete} className="flex-1 py-3 text-sm text-muted-foreground hover:text-foreground transition-colors font-medium">
+        <div className="modal-foot">
+          <button className="btn-ghost" onClick={complete}>
             Skip
           </button>
           <button
-            onClick={() => { if (step < STEPS.length - 1) setStep(step + 1); else complete() }}
-            className="flex-1 py-3 bg-primary text-primary-foreground font-bold rounded-xl hover:opacity-90 transition-all text-sm"
+            className="btn-primary"
+            onClick={() => (isLast ? complete() : setStep(step + 1))}
           >
-            {step < STEPS.length - 1 ? "Next" : "Get Started"}
+            {isLast ? "Start ↵" : "Next →"}
           </button>
         </div>
       </div>
