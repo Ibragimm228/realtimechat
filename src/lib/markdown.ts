@@ -1,23 +1,82 @@
-export function parseMarkdown(text: string): string {
-  let html = text
+const MAX_MARKDOWN_INPUT_LENGTH = 20_000
+const PLACEHOLDER_PREFIX = "\u0000MD_"
+const PLACEHOLDER_SUFFIX = "_MD\u0000"
+const URL_PATTERN = /\bhttps?:\/\/[^\s<>"'`*]+/gi
+const TRAILING_URL_PUNCTUATION = /[.,;:!?)\]]+$/
+
+function escapeHtml(value: string) {
+  return value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#x27;")
+}
 
-  html = html.replace(/`([^`]+)`/g, '<code class="bg-black/20 px-1 py-0.5 rounded text-[13px] font-mono">$1</code>')
+function escapeAttribute(value: string) {
+  return escapeHtml(value).replace(/`/g, "&#x60;")
+}
 
-  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+function normalizeUrl(rawUrl: string): string | null {
+  try {
+    const url = new URL(rawUrl)
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null
+    if (url.username || url.password) return null
+    return encodeURI(url.href)
+  } catch {
+    return null
+  }
+}
 
-  html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "<em>$1</em>")
+function splitTrailingPunctuation(url: string) {
+  const punctuation = url.match(TRAILING_URL_PUNCTUATION)?.[0] ?? ""
+  return {
+    url: punctuation ? url.slice(0, -punctuation.length) : url,
+    punctuation,
+  }
+}
 
-  html = html.replace(/~~(.+?)~~/g, "<del>$1</del>")
+function renderLink(rawUrl: string) {
+  const { url, punctuation } = splitTrailingPunctuation(rawUrl)
+  const normalized = normalizeUrl(url)
+  if (!normalized) return null
 
-  html = html.replace(
-    /(https?:\/\/[^\s<>"']+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer" class="underline text-primary hover:opacity-80">$1</a>'
+  const href = escapeAttribute(normalized)
+  const label = escapeHtml(url)
+  return `<a href="${href}" target="_blank" rel="noopener noreferrer nofollow ugc" class="underline text-primary hover:opacity-80">${label}</a>${escapeHtml(punctuation)}`
+}
+
+export function parseMarkdown(text: unknown): string {
+  if (typeof text !== "string" || text.length > MAX_MARKDOWN_INPUT_LENGTH) {
+    return ""
+  }
+
+  const placeholders: string[] = []
+  const reserve = (html: string) => {
+    const token = `${PLACEHOLDER_PREFIX}${placeholders.length}${PLACEHOLDER_SUFFIX}`
+    placeholders.push(html)
+    return token
+  }
+
+  let html = text.replace(/\u0000/g, "\uFFFD")
+
+  html = html.replace(/`([^`\n]+)`/g, (_match, code: string) =>
+    reserve(`<code class="bg-black/20 px-1 py-0.5 rounded text-[13px] font-mono">${escapeHtml(code)}</code>`)
   )
+
+  html = html.replace(URL_PATTERN, (match) => {
+    const link = renderLink(match)
+    return link ? reserve(link) : match
+  })
+
+  html = escapeHtml(html)
+  html = html.replace(/~~([\s\S]+?)~~/g, "<del>$1</del>")
+  html = html.replace(/\*\*([\s\S]+?)\*\*/g, "<strong>$1</strong>")
+  html = html.replace(/(^|[^*])\*(?!\*)([^*\n]+?)\*(?!\*)/g, "$1<em>$2</em>")
+
+  for (let index = 0; index < placeholders.length; index++) {
+    html = html.split(`${PLACEHOLDER_PREFIX}${index}${PLACEHOLDER_SUFFIX}`).join(placeholders[index])
+  }
 
   return html
 }
